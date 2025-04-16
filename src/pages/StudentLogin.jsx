@@ -22,7 +22,7 @@ function StudentLogin() {
 
     const handleInputChange = (e) => {
         const { id, value } = e.target;
-        setFormData(prev => ({ ...prev, [id]: value }));
+        setFormData((prev) => ({ ...prev, [id]: value }));
     };
 
     const handleSubmit = async (e) => {
@@ -31,9 +31,13 @@ function StudentLogin() {
         setErrorMessage('');
 
         try {
-            const response = await axios.post('http://localhost:3000/login', {
+            const apiUrl = import.meta.env.VITE_API_URL;
+            if (!apiUrl) {
+                throw new Error('API URL is not defined in environment variables');
+            }
+            const response = await axios.post(`${apiUrl}/login`, {
                 ...formData,
-                userType: 'student'
+                userType: 'student',
             });
 
             if (response.data.success) {
@@ -80,9 +84,7 @@ function StudentLogin() {
                             disabled={isLoading}
                         />
                     </div>
-
                     {errorMessage && <div className="error-message">{errorMessage}</div>}
-
                     <button
                         type="submit"
                         className="login-button"
@@ -92,7 +94,6 @@ function StudentLogin() {
                     </button>
                 </form>
             </div>
-
             {showPopup && (
                 <div className="popup success">
                     ✔️ Login successful! Redirecting to dashboard...

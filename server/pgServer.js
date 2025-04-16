@@ -508,13 +508,16 @@ function startServer() {
         const { user_id } = req.params;
         try {
             const query = `
-                SELECT DISTINCT q.quiz_id, q.quiz_name, q.quiz_code, t.username AS teacher_name, q.due_date
+                SELECT DISTINCT q.quiz_id, q.quiz_name, q.quiz_code, t.username AS teacher_name, q.due_date,
+                    COALESCE(to_char(qa.attempt_date AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), NULL) as attempt_date
                 FROM quiz_attempts qa
                 JOIN quizzes q ON qa.quiz_id = q.quiz_id
                 JOIN teacher_login t ON q.created_by = t.id
-                WHERE qa.user_id = $1;
+                WHERE qa.user_id = $1
+                ORDER BY qa.attempt_date DESC;
             `;
             const result = await pool.query(query, [user_id]);
+            console.log('Attempted quizzes query result:', result.rows);
             res.json(result.rows);
         } catch (error) {
             console.error('Error fetching attempted quizzes:', error);

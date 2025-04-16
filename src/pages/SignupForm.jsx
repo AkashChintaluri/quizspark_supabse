@@ -1,4 +1,3 @@
-// src/components/SignupForm.jsx
 import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -10,10 +9,11 @@ function SignupForm() {
         username: '',
         email: '',
         password: '',
-        userType: 'student'
+        userType: 'student',
     });
     const [isLoading, setIsLoading] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
     useEffect(() => {
         if (showPopup) {
@@ -23,7 +23,7 @@ function SignupForm() {
             }, 2000);
             return () => clearTimeout(timer);
         }
-    }, [showPopup, navigate]);
+    }, [showPopup, navigate, formData.userType]);
 
     const handleInputChange = (e) => {
         const { id, value } = e.target;
@@ -33,15 +33,23 @@ function SignupForm() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsLoading(true);
+        setErrorMessage('');
 
         try {
-            const response = await axios.post('http://localhost:3000/signup', formData);
+            const apiUrl = import.meta.env.VITE_API_URL;
+            if (!apiUrl) {
+                throw new Error('API URL is not defined in environment variables');
+            }
+            const response = await axios.post(`${apiUrl}/signup`, formData);
             setShowPopup(true);
             console.log('Signup successful:', response.data);
         } catch (error) {
-            const errorMessage =
-                error.response?.data?.error || 'Registration failed. Please try again.';
-            alert(errorMessage);
+            const errorMsg =
+                error.response?.data?.error === 'Registration failed' &&
+                error.response?.data?.details?.code === '23505'
+                    ? 'Username or email already exists.'
+                    : error.response?.data?.error || 'Registration failed. Please try again.';
+            setErrorMessage(errorMsg);
             console.error('Signup error:', error);
         } finally {
             setIsLoading(false);
@@ -62,6 +70,7 @@ function SignupForm() {
                             required
                             placeholder="Username"
                             autoComplete="username"
+                            disabled={isLoading}
                         />
                     </div>
                     <div className="form-group">
@@ -73,6 +82,7 @@ function SignupForm() {
                             required
                             placeholder="Email"
                             autoComplete="email"
+                            disabled={isLoading}
                         />
                     </div>
                     <div className="form-group">
@@ -84,6 +94,7 @@ function SignupForm() {
                             required
                             placeholder="Password"
                             autoComplete="new-password"
+                            disabled={isLoading}
                         />
                     </div>
                     <div className="form-group select-group">
@@ -91,12 +102,14 @@ function SignupForm() {
                             id="userType"
                             value={formData.userType}
                             onChange={handleInputChange}
+                            disabled={isLoading}
                         >
                             <option value="student">Student</option>
                             <option value="teacher">Teacher</option>
                         </select>
                         <span className="select-placeholder">I am a</span>
                     </div>
+                    {errorMessage && <div className="error-message">{errorMessage}</div>}
                     <button
                         type="submit"
                         className="signup-button"
