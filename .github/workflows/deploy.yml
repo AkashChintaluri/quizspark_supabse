@@ -47,7 +47,9 @@ jobs:
     - name: Get EC2 Public IP
       id: get-ip
       run: |
-        echo "IP=$(terraform output -raw instance_public_ip)" >> $GITHUB_ENV
+        IP=$(terraform output -raw instance_public_ip)
+        echo "IP=$IP" >> $GITHUB_ENV
+        echo "EC2_IP=$IP" >> $GITHUB_OUTPUT
       working-directory: ./terraform
 
     - name: Wait for EC2 to be ready
@@ -80,4 +82,4 @@ jobs:
     - name: Output Deployment URL
       run: |
         echo "Backend deployed at: http://${{ env.IP }}:3000"
-        echo "::set-output name=deployment_url::http://${{ env.IP }}:3000" 
+        echo "deployment_url=http://${{ env.IP }}:3000" >> $GITHUB_OUTPUT 
