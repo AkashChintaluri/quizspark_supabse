@@ -1,0 +1,83 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: quizspark-backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Install Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: "1.0.0"
+
+    - name: Terraform Init
+      run: terraform init
+      working-directory: ./terraform
+
+    - name: Terraform Plan
+      run: terraform plan -out=tfplan
+      working-directory: ./terraform
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve tfplan
+      working-directory: ./terraform
+
+    - name: Get EC2 Public IP
+      id: get-ip
+      run: |
+        echo "IP=$(terraform output -raw instance_public_ip)" >> $GITHUB_ENV
+      working-directory: ./terraform
+
+    - name: Wait for EC2 to be ready
+      run: |
+        until nc -zv ${{ env.IP }} 22; do
+          echo "Waiting for EC2 to be ready..."
+          sleep 5
+        done
+
+    - name: Build and Push Docker Image
+      run: |
+        docker build -t quizspark-backend .
+        docker save quizspark-backend | gzip > quizspark-backend.tar.gz
+        scp -o StrictHostKeyChecking=no quizspark-backend.tar.gz ubuntu@${{ env.IP }}:/home/ubuntu/
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker load < /home/ubuntu/quizspark-backend.tar.gz'
+
+    - name: Deploy to EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker stop quizspark-backend || true'
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker rm quizspark-backend || true'
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker run -d --name quizspark-backend -p 3000:3000 -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} quizspark-backend'
+
+    - name: Verify Deployment
+      run: |
+        until curl -s http://${{ env.IP }}:3000; do
+          echo "Waiting for application to be ready..."
+          sleep 5
+        done
+
+    - name: Output Deployment URL
+      run: |
+        echo "Backend deployed at: http://${{ env.IP }}:3000"
+        echo "::set-output name=deployment_url::http://${{ env.IP }}:3000" 
