@@ -142,38 +142,31 @@ jobs:
         echo "Waiting for instance to be ready..."
         aws ec2 wait instance-status-ok --instance-ids ${{ env.EC2_INSTANCE_ID }}
         
-        # Check if SSM agent is installed
-        echo "Checking SSM agent status..."
-        if ! aws ssm describe-instance-information \
+        # Restart SSM agent to ensure proper registration
+        echo "Restarting SSM agent..."
+        aws ssm send-command \
+          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=[
+            "sudo systemctl stop amazon-ssm-agent",
+            "sudo systemctl start amazon-ssm-agent",
+            "sudo systemctl status amazon-ssm-agent"
+          ]' \
+          --timeout-seconds 600
+        
+        echo "Waiting for SSM agent to restart..."
+        sleep 30
+        
+        # Check SSM agent registration
+        echo "Checking SSM agent registration..."
+        aws ssm describe-instance-information \
           --filters "Key=InstanceIds,Values=${{ env.EC2_INSTANCE_ID }}" \
-          --query 'InstanceInformationList[0].PingStatus' \
-          --output text 2>/dev/null; then
-          
-          echo "SSM agent not found. Installing..."
-          
-          # Install SSM agent using direct commands
-          aws ssm send-command \
-            --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-            --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "sudo snap install amazon-ssm-agent --classic",
-              "sudo snap start amazon-ssm-agent",
-              "sudo snap services amazon-ssm-agent"
-            ]' \
-            --timeout-seconds 600
-          
-          echo "Waiting for SSM agent installation..."
-          sleep 60
-          
-          # Verify SSM agent installation
-          echo "Verifying SSM agent installation..."
-          aws ssm describe-instance-information \
-            --filters "Key=InstanceIds,Values=${{ env.EC2_INSTANCE_ID }}" \
-            --query 'InstanceInformationList[0].PingStatus' \
-            --output text
-        else
-          echo "SSM agent is already installed and running"
-        fi
+          --query 'InstanceInformationList[0].[PingStatus,LastPingDateTime]' \
+          --output text
+        
+        # Wait for agent to be fully registered
+        echo "Waiting for agent to be fully registered..."
+        sleep 30
 
     - name: Check and Install CodeDeploy Agent
       run: |
