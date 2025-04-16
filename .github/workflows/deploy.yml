@@ -43,33 +43,35 @@ jobs:
       run: terraform apply -auto-approve tfplan
       working-directory: ./terraform
 
-    - name: Wait for EC2 to be ready
+    - name: Get Instance ID
+      id: get-instance
       run: |
-        IP=$(terraform output -raw instance_public_ip)
-        echo "Using IP: $IP"
-        timeout 300 bash -c \
-        "until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$IP 'hostname'; do
-          echo 'Waiting for EC2 SSH access...';
-          sleep 10;
-        done"
+        INSTANCE_ID=$(terraform output -raw instance_id)
+        echo "instance_id=$INSTANCE_ID" >> $GITHUB_ENV
       working-directory: ./terraform
 
-    - name: Build and Push Docker Image
+    - name: Build Docker Image
       run: |
-        IP=$(terraform output -raw instance_public_ip)
         docker build -t quizspark-backend .
         docker save quizspark-backend | gzip > quizspark-backend.tar.gz
-        scp -o StrictHostKeyChecking=no quizspark-backend.tar.gz ubuntu@$IP:/home/ubuntu/
-        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker load < /home/ubuntu/quizspark-backend.tar.gz'
-      working-directory: ./terraform
 
-    - name: Deploy to EC2
+    - name: Upload Docker Image to S3
       run: |
-        IP=$(terraform output -raw instance_public_ip)
-        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker stop quizspark-backend || true'
-        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker rm quizspark-backend || true'
-        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker run -d --name quizspark-backend -p 3000:3000 -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} quizspark-backend'
-      working-directory: ./terraform
+        aws s3 cp quizspark-backend.tar.gz s3://quizspark-deployments/quizspark-backend.tar.gz
+
+    - name: Deploy to EC2 using SSM
+      run: |
+        # Download and load Docker image
+        aws ssm send-command \
+          --instance-ids ${{ env.instance_id }} \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=[
+            "aws s3 cp s3://quizspark-deployments/quizspark-backend.tar.gz /home/ubuntu/quizspark-backend.tar.gz",
+            "docker load < /home/ubuntu/quizspark-backend.tar.gz",
+            "docker stop quizspark-backend || true",
+            "docker rm quizspark-backend || true",
+            "docker run -d --name quizspark-backend -p 3000:3000 -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} quizspark-backend"
+          ]'
 
     - name: Verify Deployment
       run: |
