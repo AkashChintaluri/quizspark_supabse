@@ -48,8 +48,8 @@ jobs:
       run: |
         APP_NAME=$(terraform output -raw codedeploy_app_name)
         DEPLOY_GROUP=$(terraform output -raw codedeploy_group_name)
-        echo "app_name=$APP_NAME" >> $GITHUB_ENV
-        echo "deploy_group=$DEPLOY_GROUP" >> $GITHUB_ENV
+        echo "APP_NAME=${APP_NAME}" >> $GITHUB_ENV
+        echo "DEPLOY_GROUP=${DEPLOY_GROUP}" >> $GITHUB_ENV
       working-directory: ./terraform
 
     - name: Create deployment package
@@ -67,15 +67,15 @@ jobs:
     - name: Deploy to CodeDeploy
       run: |
         aws deploy create-deployment \
-          --application-name ${{ env.app_name }} \
-          --deployment-group-name ${{ env.deploy_group }} \
+          --application-name ${{ env.APP_NAME }} \
+          --deployment-group-name ${{ env.DEPLOY_GROUP }} \
           --s3-location bucket=quizspark-deployments,bundleType=zip,key=deployment.zip
 
     - name: Wait for deployment
       run: |
         DEPLOYMENT_ID=$(aws deploy list-deployments \
-          --application-name ${{ env.app_name }} \
-          --deployment-group-name ${{ env.deploy_group }} \
+          --application-name ${{ env.APP_NAME }} \
+          --deployment-group-name ${{ env.DEPLOY_GROUP }} \
           --max-items 1 \
           --query 'deployments[0]' \
           --output text)
