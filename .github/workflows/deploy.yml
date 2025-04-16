@@ -43,8 +43,9 @@ jobs:
       id: tf-apply
       run: |
         terraform apply -auto-approve tfplan
-        echo "IP=$(terraform output -raw instance_public_ip)" >> $GITHUB_ENV
-        echo "EC2_IP=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+        IP=$(terraform output -raw instance_public_ip)
+        echo "IP=$IP" >> $GITHUB_ENV
+        echo "EC2_IP=$IP" >> $GITHUB_OUTPUT
       working-directory: ./terraform
 
     - name: Wait for EC2 to be ready
