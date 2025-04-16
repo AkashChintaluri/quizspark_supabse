@@ -64,6 +64,52 @@ jobs:
           echo "CodeDeploy application already exists"
         fi
 
+    - name: Check and Install SSM Agent
+      run: |
+        # First, check if instance is ready for SSM
+        echo "Checking if instance is ready for SSM..."
+        aws ec2 describe-instance-status \
+          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --query 'InstanceStatuses[0].InstanceStatus.Status' \
+          --output text
+        
+        # Wait for instance to be ready
+        echo "Waiting for instance to be ready..."
+        aws ec2 wait instance-status-ok --instance-ids ${{ env.EC2_INSTANCE_ID }}
+        
+        # Check if SSM agent is installed
+        echo "Checking SSM agent status..."
+        if ! aws ssm describe-instance-information \
+          --filters "Key=InstanceIds,Values=${{ env.EC2_INSTANCE_ID }}" \
+          --query 'InstanceInformationList[0].PingStatus' \
+          --output text 2>/dev/null; then
+          
+          echo "SSM agent not found. Installing..."
+          
+          # Install SSM agent using direct commands
+          aws ssm send-command \
+            --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "sudo snap install amazon-ssm-agent --classic",
+              "sudo snap start amazon-ssm-agent",
+              "sudo snap services amazon-ssm-agent"
+            ]' \
+            --timeout-seconds 600
+          
+          echo "Waiting for SSM agent installation..."
+          sleep 60
+          
+          # Verify SSM agent installation
+          echo "Verifying SSM agent installation..."
+          aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=${{ env.EC2_INSTANCE_ID }}" \
+            --query 'InstanceInformationList[0].PingStatus' \
+            --output text
+        else
+          echo "SSM agent is already installed and running"
+        fi
+
     - name: Check and Install CodeDeploy Agent
       run: |
         # Check if agent is running using SSM
