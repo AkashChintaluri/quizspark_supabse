@@ -181,36 +181,32 @@ jobs:
 
     - name: Check and Install CodeDeploy Agent
       run: |
-        # Check if agent is running using SSM
-        if ! aws ssm send-command \
-          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters 'commands=["systemctl is-active codedeploy-agent"]' \
-          --query 'Command.Status' \
-          --output text 2>/dev/null | grep -q "Success"; then
-          
+        # Get the private key from AWS
+        aws ec2 describe-key-pairs --key-names quizspark --query 'KeyPairs[0].KeyMaterial' --output text > quizspark.pem
+        chmod 400 quizspark.pem
+        
+        # Check if agent is running using SSH
+        if ! ssh -i quizspark.pem -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} "systemctl is-active codedeploy-agent" 2>/dev/null; then
           echo "Installing CodeDeploy agent..."
           
-          # Install dependencies and CodeDeploy agent using SSM
-          aws ssm send-command \
-            --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-            --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "sudo apt-get update",
-              "sudo apt-get install -y ruby",
-              "sudo apt-get install -y wget",
-              "cd /home/ubuntu",
-              "wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install",
-              "chmod +x ./install",
-              "sudo ./install auto",
-              "sudo service codedeploy-agent start"
-            ]'
+          # Install dependencies and CodeDeploy agent using SSH
+          ssh -i quizspark.pem -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} "sudo apt-get update && \
+            sudo apt-get install -y ruby && \
+            sudo apt-get install -y wget && \
+            cd /home/ubuntu && \
+            wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install && \
+            chmod +x ./install && \
+            sudo ./install auto && \
+            sudo service codedeploy-agent start"
           
           echo "Waiting for agent installation..."
           sleep 30
         else
           echo "CodeDeploy agent is already installed and running"
         fi
+        
+        # Clean up SSH key
+        rm -f quizspark.pem
 
     - name: Check for Active Deployment
       id: check_deployment
