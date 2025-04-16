@@ -18,9 +18,21 @@ data "aws_security_group" "existing_sg" {
   name = "quizspark-sg"
 }
 
-# IAM role for EC2
+# Check if IAM roles exist
+data "aws_iam_role" "ec2_role" {
+  count = 1
+  name  = "quizspark-ec2-role"
+}
+
+data "aws_iam_role" "codedeploy_role" {
+  count = 1
+  name  = "quizspark-codedeploy-role"
+}
+
+# Create IAM roles if they don't exist
 resource "aws_iam_role" "ec2_role" {
-  name = "quizspark-ec2-role"
+  count = length(data.aws_iam_role.ec2_role) == 0 ? 1 : 0
+  name  = "quizspark-ec2-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -36,9 +48,9 @@ resource "aws_iam_role" "ec2_role" {
   })
 }
 
-# IAM role for CodeDeploy
 resource "aws_iam_role" "codedeploy_role" {
-  name = "quizspark-codedeploy-role"
+  count = length(data.aws_iam_role.codedeploy_role) == 0 ? 1 : 0
+  name  = "quizspark-codedeploy-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -54,34 +66,49 @@ resource "aws_iam_role" "codedeploy_role" {
   })
 }
 
-# Attach policies to EC2 role
+# Attach policies to roles
 resource "aws_iam_role_policy_attachment" "ec2_codedeploy" {
-  role       = aws_iam_role.ec2_role.name
+  count      = length(data.aws_iam_role.ec2_role) == 0 ? 1 : 0
+  role       = aws_iam_role.ec2_role[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy"
 }
 
-# Attach policies to CodeDeploy role
 resource "aws_iam_role_policy_attachment" "codedeploy_policy" {
-  role       = aws_iam_role.codedeploy_role.name
+  count      = length(data.aws_iam_role.codedeploy_role) == 0 ? 1 : 0
+  role       = aws_iam_role.codedeploy_role[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"
 }
 
-# Create instance profile
+# Check if instance profile exists
+data "aws_iam_instance_profile" "ec2_profile" {
+  count = 1
+  name  = "quizspark-ec2-profile"
+}
+
+# Create instance profile if it doesn't exist
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "quizspark-ec2-profile"
-  role = aws_iam_role.ec2_role.name
+  count = length(data.aws_iam_instance_profile.ec2_profile) == 0 ? 1 : 0
+  name  = "quizspark-ec2-profile"
+  role  = length(data.aws_iam_role.ec2_role) > 0 ? data.aws_iam_role.ec2_role[0].name : aws_iam_role.ec2_role[0].name
 }
 
-# CodeDeploy Application
+# Check if CodeDeploy application exists
+data "aws_codedeploy_app" "quizspark" {
+  count = 1
+  name  = "quizspark-backend"
+}
+
+# Create CodeDeploy application if it doesn't exist
 resource "aws_codedeploy_app" "quizspark" {
-  name = "quizspark-backend"
+  count = length(data.aws_codedeploy_app.quizspark) == 0 ? 1 : 0
+  name  = "quizspark-backend"
 }
 
-# CodeDeploy Deployment Group
+# Create deployment group
 resource "aws_codedeploy_deployment_group" "quizspark" {
-  app_name              = aws_codedeploy_app.quizspark.name
+  app_name              = length(data.aws_codedeploy_app.quizspark) > 0 ? data.aws_codedeploy_app.quizspark[0].name : aws_codedeploy_app.quizspark[0].name
   deployment_group_name = "quizspark-production"
-  service_role_arn      = aws_iam_role.codedeploy_role.arn
+  service_role_arn      = length(data.aws_iam_role.codedeploy_role) > 0 ? data.aws_iam_role.codedeploy_role[0].arn : aws_iam_role.codedeploy_role[0].arn
 
   ec2_tag_set {
     ec2_tag_filter {
@@ -133,7 +160,7 @@ resource "aws_instance" "quizspark_backend" {
   vpc_security_group_ids = [data.aws_security_group.existing_sg.id]
   key_name               = "quizspark"
   associate_public_ip_address = true
-  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  iam_instance_profile   = length(data.aws_iam_instance_profile.ec2_profile) > 0 ? data.aws_iam_instance_profile.ec2_profile[0].name : aws_iam_instance_profile.ec2_profile[0].name
   
   user_data = <<-EOF
   #!/bin/bash
@@ -197,7 +224,7 @@ output "instance_id" {
 }
 
 output "codedeploy_app_name" {
-  value = aws_codedeploy_app.quizspark.name
+  value = length(data.aws_codedeploy_app.quizspark) > 0 ? data.aws_codedeploy_app.quizspark[0].name : aws_codedeploy_app.quizspark[0].name
 }
 
 output "codedeploy_group_name" {
