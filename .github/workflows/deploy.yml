@@ -62,6 +62,25 @@ jobs:
           echo "CodeDeploy application already exists"
         fi
 
+    - name: Check for Active Deployment
+      id: check_deployment
+      run: |
+        ACTIVE_DEPLOYMENT=$(aws deploy list-deployments \
+          --application-name quizspark-backend \
+          --deployment-group-name quizspark-production \
+          --include-only-statuses InProgress \
+          --query 'deployments[0]' \
+          --output text || echo "")
+        
+        if [ -n "$ACTIVE_DEPLOYMENT" ]; then
+          echo "Found active deployment: $ACTIVE_DEPLOYMENT"
+          echo "Waiting for it to complete..."
+          aws deploy wait deployment-successful --deployment-id $ACTIVE_DEPLOYMENT
+          echo "Previous deployment completed"
+        else
+          echo "No active deployment found"
+        fi
+
     - name: Deploy using CodeDeploy
       id: deploy
       run: |
