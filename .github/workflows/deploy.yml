@@ -27,49 +27,59 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: Install Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: "1.0.0"
-
-    - name: Terraform Init
-      run: terraform init
-      working-directory: ./terraform
-
-    - name: Terraform Plan
-      run: terraform plan -out=tfplan
-      working-directory: ./terraform
-
-    - name: Terraform Apply
-      run: terraform apply -auto-approve tfplan
-      working-directory: ./terraform
-
     - name: Build Docker Image
       run: |
         docker build -t quizspark-backend .
         docker save quizspark-backend | gzip > quizspark-backend.tar.gz
 
-    - name: Upload Docker Image to S3
+    - name: Create deployment package
       run: |
-        aws s3 cp quizspark-backend.tar.gz s3://quizspark-deployments/quizspark-backend.tar.gz
+        mkdir -p deployment
+        cp quizspark-backend.tar.gz deployment/
+        cp appspec.yml deployment/
+        cp scripts/* deployment/
+        cd deployment
+        zip -r ../deployment.zip .
 
-    - name: Deploy to EC2 using SSM
+    - name: Upload to S3
       run: |
-        # Get instance ID from Terraform
-        INSTANCE_ID=$(terraform output -raw instance_id)
+        aws s3 cp deployment.zip s3://quizspark-deployments/deployment.zip
+
+    - name: Check and Create CodeDeploy Application
+      run: |
+        # Check if application exists
+        if ! aws deploy get-application --application-name quizspark-backend 2>/dev/null; then
+          echo "Creating CodeDeploy application..."
+          aws deploy create-application --application-name quizspark-backend
+          
+          echo "Creating deployment group..."
+          aws deploy create-deployment-group \
+            --application-name quizspark-backend \
+            --deployment-group-name quizspark-production \
+            --ec2-tag-filters Key=Name,Value=quizspark-backend,Type=KEY_AND_VALUE \
+            --service-role-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/CodeDeployServiceRole
+        else
+          echo "CodeDeploy application already exists"
+        fi
+
+    - name: Deploy using CodeDeploy
+      run: |
+        aws deploy create-deployment \
+          --application-name quizspark-backend \
+          --deployment-group-name quizspark-production \
+          --s3-location bucket=quizspark-deployments,bundleType=zip,key=deployment.zip
+
+    - name: Wait for deployment
+      run: |
+        DEPLOYMENT_ID=$(aws deploy list-deployments \
+          --application-name quizspark-backend \
+          --deployment-group-name quizspark-production \
+          --max-items 1 \
+          --query 'deployments[0]' \
+          --output text)
         
-        # Download and load Docker image
-        aws ssm send-command \
-          --instance-ids $INSTANCE_ID \
-          --document-name "AWS-RunShellScript" \
-          --parameters 'commands=[
-            "aws s3 cp s3://quizspark-deployments/quizspark-backend.tar.gz /home/ubuntu/quizspark-backend.tar.gz",
-            "docker load < /home/ubuntu/quizspark-backend.tar.gz",
-            "docker stop quizspark-backend || true",
-            "docker rm quizspark-backend || true",
-            "docker run -d --name quizspark-backend -p 3000:3000 -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} quizspark-backend"
-          ]'
-      working-directory: ./terraform
+        aws deploy wait deployment-successful \
+          --deployment-id $DEPLOYMENT_ID
 
     - name: Verify Deployment
       run: |

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Stop and remove existing container if it exists
+# Stop and remove existing container
 docker stop quizspark-backend || true
 docker rm quizspark-backend || true
 

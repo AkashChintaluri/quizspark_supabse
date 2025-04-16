@@ -8,6 +8,6 @@ source /home/ubuntu/quizspark/.env
 docker run -d \
   --name quizspark-backend \
   -p 3000:3000 \
-  -e SUPABASE_URL="$SUPABASE_URL" \
-  -e SUPABASE_KEY="$SUPABASE_KEY" \
+  -e SUPABASE_URL=$SUPABASE_URL \
+  -e SUPABASE_KEY=$SUPABASE_KEY \
   quizspark-backend 

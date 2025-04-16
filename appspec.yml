@@ -1,24 +1,30 @@
 version: 0.0
 os: linux
 files:
-  - source: /
-    destination: /home/ubuntu/quizspark
+  - source: quizspark-backend.tar.gz
+    destination: /home/ubuntu
+  - source: before_install.sh
+    destination: /home/ubuntu
+  - source: after_install.sh
+    destination: /home/ubuntu
+  - source: start.sh
+    destination: /home/ubuntu
 permissions:
-  - object: /home/ubuntu/quizspark
+  - object: /home/ubuntu
     pattern: "**"
     owner: ubuntu
     group: ubuntu
     mode: 755
 hooks:
   BeforeInstall:
-    - location: scripts/before_install.sh
+    - location: before_install.sh
       timeout: 300
       runas: ubuntu
   AfterInstall:
-    - location: scripts/after_install.sh
+    - location: after_install.sh
       timeout: 300
       runas: ubuntu
   ApplicationStart:
-    - location: scripts/start.sh
+    - location: start.sh
       timeout: 300
       runas: ubuntu 
