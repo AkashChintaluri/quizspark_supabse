@@ -7,7 +7,7 @@ on:
 
 env:
   AWS_REGION: ap-south-1
-  EC2_IP: "13.127.72.180"  # Using the existing instance's IP
+  EC2_IP: "13.127.72.180"
   EC2_INSTANCE_ID: "i-0158b19cc85a4e542"
   EC2_DNS: "ec2-13-127-72-180.ap-south-1.compute.amazonaws.com"
 
@@ -47,28 +47,24 @@ jobs:
       run: |
         aws s3 cp deployment.zip s3://quizspark-deployments/deployment.zip
 
-    - name: Deploy to EC2
+    - name: Create Deployment
       run: |
-        # Create temporary directory on EC2
-        aws ssm send-command \
-          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters 'commands=["mkdir -p /tmp/quizspark-deploy"]'
-
-        # Copy deployment package from S3 to EC2
-        aws s3 cp s3://quizspark-deployments/deployment.zip s3://quizspark-deployments/deployment.zip
-        aws ssm send-command \
-          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters 'commands=[
-            "cd /tmp/quizspark-deploy",
-            "aws s3 cp s3://quizspark-deployments/deployment.zip .",
-            "unzip deployment.zip",
-            "chmod +x before_install.sh after_install.sh start.sh",
-            "./before_install.sh",
-            "./after_install.sh",
-            "./start.sh"
-          ]'
+        # Create or get the deployment
+        DEPLOYMENT_ID=$(aws deploy create-deployment \
+          --application-name quizspark-backend \
+          --deployment-group-name quizspark-production \
+          --s3-location bucket=quizspark-deployments,bundleType=zip,key=deployment.zip \
+          --query 'deploymentId' \
+          --output text)
+        
+        echo "Deployment ID: $DEPLOYMENT_ID"
+        
+        # Wait for deployment to complete
+        echo "Waiting for deployment to complete..."
+        aws deploy wait deployment-successful \
+          --deployment-id $DEPLOYMENT_ID
+        
+        echo "Deployment completed successfully"
 
     - name: Verify Deployment
       run: |
@@ -82,50 +78,16 @@ jobs:
           
           if [ $elapsed_time -gt $timeout ]; then
             echo "Timeout reached after 5 minutes"
-            echo "Checking container status..."
-            aws ssm send-command \
-              --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-              --document-name "AWS-RunShellScript" \
-              --parameters 'commands=[
-                "docker ps -a",
-                "docker logs quizzespark-backend"
-              ]'
             exit 1
           fi
           
-          # Check if container is running
-          container_status=$(aws ssm send-command \
-            --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-            --document-name "AWS-RunShellScript" \
-            --parameters 'commands=["docker ps -q --filter name=quizzespark-backend"]' \
-            --query 'Command.CommandId' \
-            --output text)
-          
-          if [ -n "$container_status" ]; then
-            echo "Container is running, checking application health..."
-            if curl -s http://${{ env.EC2_DNS }}:3000; then
-              echo "Application is responding!"
-              break
-            else
-              echo "Container is running but application is not responding yet..."
-              # Get container logs
-              aws ssm send-command \
-                --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-                --document-name "AWS-RunShellScript" \
-                --parameters 'commands=["docker logs quizzespark-backend --tail 50"]'
-            fi
+          if curl -s http://${{ env.EC2_DNS }}:3000; then
+            echo "Application is responding!"
+            break
           else
-            echo "Container is not running, checking deployment logs..."
-            aws ssm send-command \
-              --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-              --document-name "AWS-RunShellScript" \
-              --parameters 'commands=[
-                "ls -la /tmp/quizspark-deploy",
-                "cat /tmp/quizspark-deploy/start.sh"
-              ]'
+            echo "Waiting for application to be ready..."
+            sleep 10
           fi
-          
-          sleep 10
         done
 
     - name: Output Deployment URL
