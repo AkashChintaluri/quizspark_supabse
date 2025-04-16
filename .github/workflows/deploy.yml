@@ -7,6 +7,7 @@ on:
 
 env:
   AWS_REGION: ap-south-1
+  EC2_IP: "13.127.72.180"  # Using the existing instance's IP
 
 jobs:
   deploy:
@@ -43,13 +44,6 @@ jobs:
       run: terraform apply -auto-approve tfplan
       working-directory: ./terraform
 
-    - name: Get Instance ID
-      id: get-instance
-      run: |
-        INSTANCE_ID=$(terraform output -raw instance_id)
-        echo "instance_id=$INSTANCE_ID" >> $GITHUB_ENV
-      working-directory: ./terraform
-
     - name: Build Docker Image
       run: |
         docker build -t quizspark-backend .
@@ -61,9 +55,12 @@ jobs:
 
     - name: Deploy to EC2 using SSM
       run: |
+        # Get instance ID from Terraform
+        INSTANCE_ID=$(terraform output -raw instance_id)
+        
         # Download and load Docker image
         aws ssm send-command \
-          --instance-ids ${{ env.instance_id }} \
+          --instance-ids $INSTANCE_ID \
           --document-name "AWS-RunShellScript" \
           --parameters 'commands=[
             "aws s3 cp s3://quizspark-deployments/quizspark-backend.tar.gz /home/ubuntu/quizspark-backend.tar.gz",
@@ -72,18 +69,15 @@ jobs:
             "docker rm quizspark-backend || true",
             "docker run -d --name quizspark-backend -p 3000:3000 -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} quizspark-backend"
           ]'
+      working-directory: ./terraform
 
     - name: Verify Deployment
       run: |
-        IP=$(terraform output -raw instance_public_ip)
-        until curl -s http://$IP:3000; do
+        until curl -s http://${{ env.EC2_IP }}:3000; do
           echo "Waiting for application to be ready..."
           sleep 5
         done
-      working-directory: ./terraform
 
     - name: Output Deployment URL
       run: |
-        IP=$(terraform output -raw instance_public_ip)
-        echo "Backend deployed at: http://$IP:3000"
-      working-directory: ./terraform
+        echo "Backend deployed at: http://${{ env.EC2_IP }}:3000"
