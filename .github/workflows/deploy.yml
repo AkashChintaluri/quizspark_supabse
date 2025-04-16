@@ -155,26 +155,6 @@ jobs:
         echo "Waiting for IAM changes to propagate..."
         sleep 30
 
-    - name: Update Instance Key Pair
-      run: |
-        # Get the public key from the private key
-        echo "${{ secrets.EC2_SSH_KEY }}" > quizspark.pem
-        chmod 400 quizspark.pem
-        ssh-keygen -y -f quizspark.pem > quizspark.pub
-        
-        # Import the new key pair
-        aws ec2 import-key-pair \
-          --key-name quizspark \
-          --public-key-material fileb://quizspark.pub
-        
-        # Associate the new key pair with the instance
-        aws ec2 associate-iam-instance-profile \
-          --instance-id ${{ env.EC2_INSTANCE_ID }} \
-          --iam-instance-profile Name=quizspark-ec2-role
-        
-        # Clean up temporary files
-        rm -f quizspark.pem quizspark.pub
-
     - name: Check and Install CodeDeploy Agent
       run: |
         # Create SSH key from GitHub Secret
