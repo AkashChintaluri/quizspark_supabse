@@ -59,9 +59,9 @@ resource "aws_instance" "quizspark_backend" {
               apt-get install -y docker.io
               systemctl start docker
               systemctl enable docker
-              # Backup configuration
+              # Backup configuration with error handling
               mkdir -p /home/ubuntu/backups
-              echo "0 0 * * * root tar -zcf /home/ubuntu/backups/quizspark_backup_\$(date +\%F).tar.gz /home/ubuntu/quizspark-data" >> /etc/crontab
+              echo "0 0 * * * root (tar -zcf /home/ubuntu/backups/quizspark_backup_\$(date +\\%F).tar.gz /home/ubuntu/quizspark-data || echo 'Backup failed' >&2)" >> /etc/crontab
               systemctl restart cron
               EOF
 
