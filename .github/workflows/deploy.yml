@@ -64,6 +64,35 @@ jobs:
           echo "CodeDeploy application already exists"
         fi
 
+    - name: Verify EC2 Instance State
+      run: |
+        echo "Checking EC2 instance state..."
+        INSTANCE_STATE=$(aws ec2 describe-instances \
+          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --query 'Reservations[0].Instances[0].State.Name' \
+          --output text)
+        
+        echo "Instance state: $INSTANCE_STATE"
+        
+        if [ "$INSTANCE_STATE" != "running" ]; then
+          echo "Error: Instance is not in running state. Current state: $INSTANCE_STATE"
+          exit 1
+        fi
+        
+        # Check if instance has SSM role
+        echo "Checking instance IAM role..."
+        INSTANCE_ROLE=$(aws ec2 describe-instances \
+          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --query 'Reservations[0].Instances[0].IamInstanceProfile.Arn' \
+          --output text)
+        
+        if [ -z "$INSTANCE_ROLE" ]; then
+          echo "Error: Instance does not have an IAM role attached"
+          exit 1
+        fi
+        
+        echo "Instance IAM role: $INSTANCE_ROLE"
+
     - name: Check and Install SSM Agent
       run: |
         # First, check if instance is ready for SSM
