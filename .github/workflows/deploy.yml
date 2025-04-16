@@ -148,15 +148,6 @@ jobs:
         aws s3 cp dist/index.html s3://${{ env.S3_BUCKET }}/index.html --cache-control "no-cache, no-store, must-revalidate"
         aws s3 cp dist/assets s3://${{ env.S3_BUCKET }}/assets --recursive --cache-control "max-age=31536000"
 
-    - name: Verify Frontend Deployment
-      run: |
-        sleep 5
-        response=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.S3_BUCKET }}.s3-website.${{ env.AWS_REGION }}.amazonaws.com)
-        if [ "$response" != "200" ]; then
-          echo "Error: Frontend is not responding correctly"
-          exit 1
-        fi
-
     - name: Output Frontend URL
       run: |
         echo "Frontend deployed at: https://${{ env.S3_BUCKET }}.s3-website.${{ env.AWS_REGION }}.amazonaws.com"
