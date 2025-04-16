@@ -65,7 +65,42 @@ jobs:
 
     - name: Create Deployment
       run: |
-        # Create or get the deployment
+        # Check for existing active deployment
+        ACTIVE_DEPLOYMENT=$(aws deploy list-deployments \
+          --application-name quizspark-backend \
+          --deployment-group-name quizspark-production \
+          --include-only-statuses InProgress \
+          --query 'deployments[0]' \
+          --output text)
+        
+        if [ -n "$ACTIVE_DEPLOYMENT" ] && [ "$ACTIVE_DEPLOYMENT" != "None" ]; then
+          echo "Found active deployment: $ACTIVE_DEPLOYMENT"
+          echo "Waiting for it to complete..."
+          
+          # Wait for existing deployment to complete
+          while true; do
+            DEPLOYMENT_STATUS=$(aws deploy get-deployment \
+              --deployment-id $ACTIVE_DEPLOYMENT \
+              --query 'deploymentInfo.status' \
+              --output text)
+            
+            echo "Current deployment status: $DEPLOYMENT_STATUS"
+            
+            if [ "$DEPLOYMENT_STATUS" = "Succeeded" ]; then
+              echo "Previous deployment completed successfully"
+              break
+            elif [ "$DEPLOYMENT_STATUS" = "Failed" ] || [ "$DEPLOYMENT_STATUS" = "Stopped" ]; then
+              echo "Previous deployment failed or was stopped"
+              echo "Stopping it..."
+              aws deploy stop-deployment --deployment-id $ACTIVE_DEPLOYMENT
+              break
+            fi
+            
+            sleep 30
+          done
+        fi
+        
+        # Create new deployment
         DEPLOYMENT_ID=$(aws deploy create-deployment \
           --application-name quizspark-backend \
           --deployment-group-name quizspark-production \
@@ -73,10 +108,10 @@ jobs:
           --query 'deploymentId' \
           --output text)
         
-        echo "Deployment ID: $DEPLOYMENT_ID"
+        echo "New Deployment ID: $DEPLOYMENT_ID"
         
-        # Wait for deployment to complete with detailed status
-        echo "Waiting for deployment to complete..."
+        # Wait for new deployment to complete with detailed status
+        echo "Waiting for new deployment to complete..."
         while true; do
           # Get deployment status
           DEPLOYMENT_STATUS=$(aws deploy get-deployment \
