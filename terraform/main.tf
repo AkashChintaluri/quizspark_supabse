@@ -24,12 +24,7 @@ data "aws_iam_role" "ec2_role" {
   name  = "quizspark-ec2-role"
 }
 
-data "aws_iam_role" "codedeploy_role" {
-  count = 1
-  name  = "quizspark-codedeploy-role"
-}
-
-# Create IAM roles if they don't exist
+# Create IAM role if it doesn't exist
 resource "aws_iam_role" "ec2_role" {
   count = length(data.aws_iam_role.ec2_role) == 0 ? 1 : 0
   name  = "quizspark-ec2-role"
@@ -48,35 +43,11 @@ resource "aws_iam_role" "ec2_role" {
   })
 }
 
-resource "aws_iam_role" "codedeploy_role" {
-  count = length(data.aws_iam_role.codedeploy_role) == 0 ? 1 : 0
-  name  = "quizspark-codedeploy-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "codedeploy.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-# Attach policies to roles
-resource "aws_iam_role_policy_attachment" "ec2_codedeploy" {
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "ec2_policy" {
   count      = length(data.aws_iam_role.ec2_role) == 0 ? 1 : 0
   role       = aws_iam_role.ec2_role[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforAWSCodeDeploy"
-}
-
-resource "aws_iam_role_policy_attachment" "codedeploy_policy" {
-  count      = length(data.aws_iam_role.codedeploy_role) == 0 ? 1 : 0
-  role       = aws_iam_role.codedeploy_role[0].name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
 # Check if instance profile exists
@@ -90,61 +61,6 @@ resource "aws_iam_instance_profile" "ec2_profile" {
   count = length(data.aws_iam_instance_profile.ec2_profile) == 0 ? 1 : 0
   name  = "quizspark-ec2-profile"
   role  = length(data.aws_iam_role.ec2_role) > 0 ? data.aws_iam_role.ec2_role[0].name : aws_iam_role.ec2_role[0].name
-}
-
-# Import existing CodeDeploy application
-resource "aws_codedeploy_app" "quizspark" {
-  name = "quizspark-backend"
-}
-
-# Create deployment group
-resource "aws_codedeploy_deployment_group" "quizspark" {
-  app_name              = aws_codedeploy_app.quizspark.name
-  deployment_group_name = "quizspark-production"
-  service_role_arn      = length(data.aws_iam_role.codedeploy_role) > 0 ? data.aws_iam_role.codedeploy_role[0].arn : aws_iam_role.codedeploy_role[0].arn
-
-  ec2_tag_set {
-    ec2_tag_filter {
-      key   = "Name"
-      type  = "KEY_AND_VALUE"
-      value = "quizspark-backend"
-    }
-  }
-
-  deployment_style {
-    deployment_option = "WITHOUT_TRAFFIC_CONTROL"
-    deployment_type   = "IN_PLACE"
-  }
-}
-
-resource "random_id" "sg_suffix" {
-  byte_length = 4
-}
-
-resource "aws_security_group" "quizspark_sg" {
-  name        = "quizspark-sg-${random_id.sg_suffix.hex}"
-  description = "Security group for QuizSpark backend"
-
-  ingress {
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
 resource "aws_instance" "quizspark_backend" {
@@ -187,21 +103,11 @@ resource "aws_instance" "quizspark_backend" {
   # Create directory for application data
   mkdir -p /home/ubuntu/quizspark-data
   chown ubuntu:ubuntu /home/ubuntu/quizspark-data
-
-  # Install CodeDeploy agent
-  apt-get install -y ruby
-  cd /home/ubuntu
-  wget https://aws-codedeploy-ap-south-1.s3.ap-south-1.amazonaws.com/latest/install
-  chmod +x ./install
-  ./install auto
   EOF
 
   tags = {
     Name = "quizspark-backend"
   }
-
-  # Ensure proper instance termination protection
-  disable_api_termination = false # Set to true for production
 }
 
 output "instance_public_ip" {
@@ -214,12 +120,4 @@ output "instance_public_dns" {
 
 output "instance_id" {
   value = aws_instance.quizspark_backend.id
-}
-
-output "codedeploy_app_name" {
-  value = aws_codedeploy_app.quizspark.name
-}
-
-output "codedeploy_group_name" {
-  value = aws_codedeploy_deployment_group.quizspark.deployment_group_name
 }
