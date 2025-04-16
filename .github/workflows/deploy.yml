@@ -47,9 +47,9 @@ jobs:
     - name: Get EC2 Public IP
       id: get-ip
       run: |
-        IP=$(terraform output -raw instance_public_ip)
-        echo "IP=$IP" >> $GITHUB_ENV
-        echo "EC2_IP=$IP" >> $GITHUB_OUTPUT
+        IP=$(terraform output -raw instance_public_ip | tr -d '\n')
+        echo "IP=${IP}" >> $GITHUB_ENV
+        echo "EC2_IP=${IP}" >> $GITHUB_OUTPUT
       working-directory: ./terraform
 
     - name: Wait for EC2 to be ready
