@@ -82,4 +82,4 @@ jobs:
     - name: Output Deployment URL
       run: |
         echo "Backend deployed at: http://${{ env.IP }}:3000"
-        echo "deployment_url=http://${{ env.IP }}:3000" >> $GITHUB_OUTPUT 
+        echo "deployment_url=http://${{ env.IP }}:3000" >> $GITHUB_OUTPUT
