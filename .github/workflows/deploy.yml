@@ -47,13 +47,45 @@ jobs:
       run: |
         aws s3 cp deployment.zip s3://quizspark-deployments/deployment.zip
 
+    - name: Configure CodeDeploy Role
+      run: |
+        # Create CodeDeploy role if it doesn't exist
+        if ! aws iam get-role --role-name quizspark-codedeploy-role 2>/dev/null; then
+          echo "Creating CodeDeploy role..."
+          aws iam create-role \
+            --role-name quizspark-codedeploy-role \
+            --assume-role-policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "codedeploy.amazonaws.com"
+                  },
+                  "Action": "sts:AssumeRole"
+                }
+              ]
+            }'
+          
+          # Attach necessary policies
+          aws iam attach-role-policy \
+            --role-name quizspark-codedeploy-role \
+            --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+        else
+          echo "CodeDeploy role already exists"
+        fi
+
     - name: Create Deployment
       run: |
+        # Get the role ARN
+        ROLE_ARN=$(aws iam get-role --role-name quizspark-codedeploy-role --query 'Role.Arn' --output text)
+        
         # Create or get the deployment
         DEPLOYMENT_ID=$(aws deploy create-deployment \
           --application-name quizspark-backend \
           --deployment-group-name quizspark-production \
           --s3-location bucket=quizspark-deployments,bundleType=zip,key=deployment.zip \
+          --service-role-arn $ROLE_ARN \
           --query 'deploymentId' \
           --output text)
         
