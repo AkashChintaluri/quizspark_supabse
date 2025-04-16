@@ -47,6 +47,32 @@ jobs:
       run: |
         aws s3 cp deployment.zip s3://quizspark-deployments/deployment.zip
 
+    - name: Configure Deployment Group
+      run: |
+        # Check if deployment group exists
+        if ! aws deploy get-deployment-group \
+          --application-name quizspark-backend \
+          --deployment-group-name quizspark-production 2>/dev/null; then
+          
+          echo "Creating deployment group..."
+          aws deploy create-deployment-group \
+            --application-name quizspark-backend \
+            --deployment-group-name quizspark-production \
+            --ec2-tag-filters Key=Name,Value=quizspark-backend,Type=KEY_AND_VALUE \
+            --service-role-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/quizspark-codedeploy-role
+        else
+          echo "Updating deployment group..."
+          aws deploy update-deployment-group \
+            --application-name quizspark-backend \
+            --current-deployment-group-name quizspark-production \
+            --ec2-tag-filters Key=Name,Value=quizspark-backend,Type=KEY_AND_VALUE
+        fi
+
+        # Tag the EC2 instance if not already tagged
+        aws ec2 create-tags \
+          --resources ${{ env.EC2_INSTANCE_ID }} \
+          --tags Key=Name,Value=quizspark-backend
+
     - name: Configure IAM Role
       run: |
         # Get the instance profile ARN
