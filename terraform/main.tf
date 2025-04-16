@@ -92,21 +92,14 @@ resource "aws_iam_instance_profile" "ec2_profile" {
   role  = length(data.aws_iam_role.ec2_role) > 0 ? data.aws_iam_role.ec2_role[0].name : aws_iam_role.ec2_role[0].name
 }
 
-# Check if CodeDeploy application exists
-data "aws_codedeploy_app" "quizspark" {
-  count = 1
-  name  = "quizspark-backend"
-}
-
-# Create CodeDeploy application if it doesn't exist
+# CodeDeploy Application
 resource "aws_codedeploy_app" "quizspark" {
-  count = length(data.aws_codedeploy_app.quizspark) == 0 ? 1 : 0
-  name  = "quizspark-backend"
+  name = "quizspark-backend"
 }
 
 # Create deployment group
 resource "aws_codedeploy_deployment_group" "quizspark" {
-  app_name              = length(data.aws_codedeploy_app.quizspark) > 0 ? data.aws_codedeploy_app.quizspark[0].name : aws_codedeploy_app.quizspark[0].name
+  app_name              = aws_codedeploy_app.quizspark.name
   deployment_group_name = "quizspark-production"
   service_role_arn      = length(data.aws_iam_role.codedeploy_role) > 0 ? data.aws_iam_role.codedeploy_role[0].arn : aws_iam_role.codedeploy_role[0].arn
 
@@ -224,7 +217,7 @@ output "instance_id" {
 }
 
 output "codedeploy_app_name" {
-  value = length(data.aws_codedeploy_app.quizspark) > 0 ? data.aws_codedeploy_app.quizspark[0].name : aws_codedeploy_app.quizspark[0].name
+  value = aws_codedeploy_app.quizspark.name
 }
 
 output "codedeploy_group_name" {
