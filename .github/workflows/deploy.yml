@@ -140,67 +140,17 @@ jobs:
         ROLE_NAME=$(echo $INSTANCE_ROLE | cut -d'/' -f2)
         echo "IAM Role Name: $ROLE_NAME"
         
-        # Check if role has SSM permissions
-        echo "Checking IAM role permissions..."
-        aws iam get-role-policy \
+        # Attach the AmazonSSMManagedInstanceCore policy
+        echo "Attaching SSM managed instance core policy..."
+        aws iam attach-role-policy \
           --role-name $ROLE_NAME \
-          --policy-name SSMPermissions \
-          --query 'PolicyDocument' \
-          --output text || true
+          --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
         
-        # If policy doesn't exist or doesn't have required permissions, create/update it
-        echo "Updating IAM role permissions..."
-        aws iam put-role-policy \
+        # Attach the AmazonEC2RoleforSSM policy
+        echo "Attaching EC2 role for SSM policy..."
+        aws iam attach-role-policy \
           --role-name $ROLE_NAME \
-          --policy-name SSMPermissions \
-          --policy-document '{
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Effect": "Allow",
-                "Action": [
-                  "ssm:DescribeAssociation",
-                  "ssm:GetDeployablePatchSnapshotForInstance",
-                  "ssm:GetDocument",
-                  "ssm:DescribeDocument",
-                  "ssm:GetManifest",
-                  "ssm:GetParameter",
-                  "ssm:GetParameters",
-                  "ssm:ListAssociations",
-                  "ssm:ListInstanceAssociations",
-                  "ssm:PutInventory",
-                  "ssm:PutComplianceItems",
-                  "ssm:PutConfigurePackageResult",
-                  "ssm:UpdateAssociationStatus",
-                  "ssm:UpdateInstanceAssociationStatus",
-                  "ssm:UpdateInstanceInformation"
-                ],
-                "Resource": "*"
-              },
-              {
-                "Effect": "Allow",
-                "Action": [
-                  "ssmmessages:CreateControlChannel",
-                  "ssmmessages:CreateDataChannel",
-                  "ssmmessages:OpenControlChannel",
-                  "ssmmessages:OpenDataChannel"
-                ],
-                "Resource": "*"
-              },
-              {
-                "Effect": "Allow",
-                "Action": [
-                  "ec2messages:AcknowledgeMessage",
-                  "ec2messages:DeleteMessage",
-                  "ec2messages:FailMessage",
-                  "ec2messages:GetEndpoint",
-                  "ec2messages:GetMessages",
-                  "ec2messages:SendReply"
-                ],
-                "Resource": "*"
-              }
-            ]
-          }'
+          --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
         
         echo "Waiting for IAM changes to propagate..."
         sleep 30
