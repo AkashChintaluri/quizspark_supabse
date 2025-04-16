@@ -40,49 +40,48 @@ jobs:
       working-directory: ./terraform
 
     - name: Terraform Apply
-      id: tf-apply
-      run: |
-        terraform apply -auto-approve tfplan
-        IP=$(terraform output -raw instance_public_ip)
-        echo "IP=$IP" >> $GITHUB_ENV
-        echo "EC2_IP=$IP" >> $GITHUB_OUTPUT
+      run: terraform apply -auto-approve tfplan
       working-directory: ./terraform
 
     - name: Wait for EC2 to be ready
       run: |
-        echo "Verifying IP: ${{ env.IP }}"
-        if [[ ! "${{ env.IP }}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-          echo "Invalid IP address format: '${{ env.IP }}'"
-          exit 1
-        fi
-
+        IP=$(terraform output -raw instance_public_ip)
+        echo "Using IP: $IP"
         timeout 300 bash -c \
-        "until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'hostname'; do
+        "until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$IP 'hostname'; do
           echo 'Waiting for EC2 SSH access...';
           sleep 10;
         done"
+      working-directory: ./terraform
 
     - name: Build and Push Docker Image
       run: |
+        IP=$(terraform output -raw instance_public_ip)
         docker build -t quizspark-backend .
         docker save quizspark-backend | gzip > quizspark-backend.tar.gz
-        scp -o StrictHostKeyChecking=no quizspark-backend.tar.gz ubuntu@${{ env.IP }}:/home/ubuntu/
-        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker load < /home/ubuntu/quizspark-backend.tar.gz'
+        scp -o StrictHostKeyChecking=no quizspark-backend.tar.gz ubuntu@$IP:/home/ubuntu/
+        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker load < /home/ubuntu/quizspark-backend.tar.gz'
+      working-directory: ./terraform
 
     - name: Deploy to EC2
       run: |
-        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker stop quizspark-backend || true'
-        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker rm quizspark-backend || true'
-        ssh -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} 'docker run -d --name quizspark-backend -p 3000:3000 -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} quizspark-backend'
+        IP=$(terraform output -raw instance_public_ip)
+        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker stop quizspark-backend || true'
+        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker rm quizspark-backend || true'
+        ssh -o StrictHostKeyChecking=no ubuntu@$IP 'docker run -d --name quizspark-backend -p 3000:3000 -e SUPABASE_URL=${{ secrets.SUPABASE_URL }} -e SUPABASE_KEY=${{ secrets.SUPABASE_KEY }} quizspark-backend'
+      working-directory: ./terraform
 
     - name: Verify Deployment
       run: |
-        until curl -s http://${{ env.IP }}:3000; do
+        IP=$(terraform output -raw instance_public_ip)
+        until curl -s http://$IP:3000; do
           echo "Waiting for application to be ready..."
           sleep 5
         done
+      working-directory: ./terraform
 
     - name: Output Deployment URL
       run: |
-        echo "Backend deployed at: http://${{ env.IP }}:3000"
-        echo "deployment_url=http://${{ env.IP }}:3000" >> $GITHUB_OUTPUT
+        IP=$(terraform output -raw instance_public_ip)
+        echo "Backend deployed at: http://$IP:3000"
+      working-directory: ./terraform
