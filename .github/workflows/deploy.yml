@@ -13,27 +13,7 @@ env:
   S3_BUCKET: "quizspark-frontend"
 
 jobs:
-  check-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      backend-changed: ${{ steps.filter.outputs.backend }}
-      frontend-changed: ${{ steps.filter.outputs.frontend }}
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            backend:
-              - 'server/**'
-              - 'Dockerfile'
-              - '.dockerignore'
-            frontend:
-              - 'frontend/**'
-
   deploy-backend:
-    needs: check-changes
-    if: needs.check-changes.outputs.backend-changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -125,8 +105,6 @@ jobs:
         echo "Backend deployed at: http://${{ env.EC2_DNS }}:3000"
 
   deploy-frontend:
-    needs: check-changes
-    if: needs.check-changes.outputs.frontend-changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -143,10 +121,21 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
+    - name: Clean S3 Bucket
+      run: |
+        aws s3 rm s3://${{ env.S3_BUCKET }} --recursive
+
     - name: Install Node.js
       uses: actions/setup-node@v3
       with:
         node-version: '18'
+
+    - name: Clean frontend directory
+      working-directory: frontend
+      run: |
+        rm -rf node_modules
+        rm -rf dist
+        rm -f package-lock.json
 
     - name: Install dependencies
       working-directory: frontend
@@ -161,6 +150,15 @@ jobs:
         aws s3 sync frontend/dist s3://${{ env.S3_BUCKET }} --delete
         aws s3 cp frontend/dist/index.html s3://${{ env.S3_BUCKET }}/index.html --cache-control "no-cache, no-store, must-revalidate"
         aws s3 cp frontend/dist/assets s3://${{ env.S3_BUCKET }}/assets --recursive --cache-control "max-age=31536000"
+
+    - name: Verify Frontend Deployment
+      run: |
+        sleep 5
+        response=$(curl -s -o /dev/null -w "%{http_code}" https://${{ env.S3_BUCKET }}.s3-website.${{ env.AWS_REGION }}.amazonaws.com)
+        if [ "$response" != "200" ]; then
+          echo "Error: Frontend is not responding correctly"
+          exit 1
+        fi
 
     - name: Output Frontend URL
       run: |
