@@ -44,7 +44,7 @@ jobs:
       run: terraform apply -auto-approve tfplan
       working-directory: ./terraform
 
-      - name: Get EC2 Public IP
+    - name: Get EC2 Public IP
       id: get-ip
       run: |
         # Add retry logic for IP retrieval
