@@ -35,6 +35,11 @@ jobs:
       run: terraform init
       working-directory: ./terraform
 
+    - name: Import existing CodeDeploy application
+      run: |
+        terraform import aws_codedeploy_app.quizspark quizspark-backend || true
+      working-directory: ./terraform
+
     - name: Terraform Plan
       run: terraform plan -out=tfplan
       working-directory: ./terraform

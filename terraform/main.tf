@@ -92,12 +92,9 @@ resource "aws_iam_instance_profile" "ec2_profile" {
   role  = length(data.aws_iam_role.ec2_role) > 0 ? data.aws_iam_role.ec2_role[0].name : aws_iam_role.ec2_role[0].name
 }
 
-# CodeDeploy Application - use existing if it exists
+# Import existing CodeDeploy application
 resource "aws_codedeploy_app" "quizspark" {
   name = "quizspark-backend"
-  lifecycle {
-    ignore_changes = [name]
-  }
 }
 
 # Create deployment group
