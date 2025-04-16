@@ -1,4 +1,4 @@
-name: Simple Deploy
+name: AWS CodeDeploy
 
 on:
   push:
@@ -9,6 +9,8 @@ env:
   AWS_REGION: ap-south-1
   EC2_IP: "13.127.72.180"
   EC2_DNS: "ec2-13-127-72-180.ap-south-1.compute.amazonaws.com"
+  APPLICATION_NAME: "quizspark"
+  DEPLOYMENT_GROUP: "quizspark-production"
 
 jobs:
   deploy:
@@ -30,86 +32,48 @@ jobs:
 
     - name: Build Docker Image
       run: |
-        # Clean up any existing containers and images
-        docker system prune -f
-        
-        # Build the new image
         docker build -t quizspark-backend .
-        
-        # Save the image
         docker save quizspark-backend | gzip > quizspark-backend.tar.gz
-        
-        # Verify the image was created
-        if [ ! -f quizspark-backend.tar.gz ]; then
-          echo "Error: Docker image was not created"
-          exit 1
-        fi
 
-    - name: Deploy to EC2
+    - name: Upload to S3
       run: |
-        # Create SSH key from secret
-        printf "%s\n" "${{ secrets.EC2_SSH_KEY }}" > key.pem
-        chmod 600 key.pem
-        if [ ! -s key.pem ]; then
-          echo "Error: SSH key file is empty or not created"
-          exit 1
-        fi
-        
-        # Copy Docker image to EC2
-        scp -o StrictHostKeyChecking=no -i key.pem quizspark-backend.tar.gz ubuntu@${{ env.EC2_IP }}:/home/ubuntu/
-        
-        # SSH into EC2 and run deployment commands
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ env.EC2_IP }} << 'EOF'
-          # Stop and remove existing container
-          docker stop quizspark-backend || true
-          docker rm quizspark-backend || true
+        aws s3 cp quizspark-backend.tar.gz s3://quizspark-deployments/quizspark-backend.tar.gz
+
+    - name: Create Deployment
+      run: |
+        # Create deployment
+        DEPLOYMENT_ID=$(aws deploy create-deployment \
+          --application-name ${{ env.APPLICATION_NAME }} \
+          --deployment-group-name ${{ env.DEPLOYMENT_GROUP }} \
+          --s3-location bucket=quizspark-deployments,bundleType=zip,key=quizspark-backend.tar.gz \
+          --query 'deploymentId' \
+          --output text)
+
+        echo "Deployment ID: $DEPLOYMENT_ID"
+
+        # Wait for deployment to complete
+        while true; do
+          STATUS=$(aws deploy get-deployment \
+            --deployment-id $DEPLOYMENT_ID \
+            --query 'deploymentInfo.status' \
+            --output text)
           
-          # Remove existing image
-          docker rmi quizspark-backend || true
+          echo "Deployment status: $STATUS"
           
-          # Load new image
-          docker load < /home/ubuntu/quizspark-backend.tar.gz
-          
-          # Run new container
-          docker run -d \
-            --name quizspark-backend \
-            --restart unless-stopped \
-            -p 3000:3000 \
-            quizspark-backend
-            
-          # Clean up the tar.gz file
-          rm -f /home/ubuntu/quizspark-backend.tar.gz
-          
-          # Wait for container to start
-          sleep 10
-          
-          # Verify container is running
-          if ! docker ps | grep -q quizspark-backend; then
-            echo "Error: Container failed to start"
-            docker logs quizspark-backend
+          if [ "$STATUS" = "Succeeded" ]; then
+            echo "Deployment completed successfully"
+            break
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Stopped" ]; then
+            echo "Deployment failed or was stopped"
             exit 1
           fi
           
-          # Check container logs
-          echo "Container logs:"
-          docker logs quizspark-backend
-          
-          # Verify the fix is deployed
-          if docker exec quizspark-backend cat /app/server/supabaseServer.js | grep -q "event"; then
-            echo "Error: The fix was not properly deployed"
-            exit 1
-          fi
-        EOF
-        
-        # Clean up local files
-        rm -f key.pem quizspark-backend.tar.gz
+          sleep 30
+        done
 
     - name: Verify Deployment
       run: |
-        # Wait for the application to be ready
-        sleep 30
-        
-        # Test the endpoint
+        sleep 10
         response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_DNS }}:3000/api/upcoming-quizzes/1)
         if [ "$response" != "200" ]; then
           echo "Error: Application is not responding correctly"

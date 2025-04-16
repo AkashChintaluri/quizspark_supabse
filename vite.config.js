@@ -7,9 +7,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000', // Your EC2 instance
+        target: process.env.VITE_API_URL || 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000',
         changeOrigin: true,
-        secure: false
+        secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
   }
