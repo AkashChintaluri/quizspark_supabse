@@ -44,20 +44,36 @@ jobs:
       run: terraform apply -auto-approve tfplan
       working-directory: ./terraform
 
-    - name: Get EC2 Public IP
+      - name: Get EC2 Public IP
       id: get-ip
       run: |
-        IP=$(terraform output -raw instance_public_ip | tr -d '\n')
-        echo "IP=${IP}" >> $GITHUB_ENV
-        echo "EC2_IP=${IP}" >> $GITHUB_OUTPUT
-      working-directory: ./terraform
-
-    - name: Wait for EC2 to be ready
-      run: |
-        until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@${{ env.IP }} true; do
-          echo "Waiting for EC2 to be ready..."
+        # Add retry logic for IP retrieval
+        for i in {1..10}; do
+          IP=$(terraform output -raw instance_public_ip | tr -d '\n')
+          if [[ "$IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "IP=${IP}" >> $GITHUB_ENV
+            echo "EC2_IP=${IP}" >> $GITHUB_OUTPUT
+            break
+          fi
           sleep 5
         done
+      working-directory: ./terraform
+    
+    - name: Wait for EC2 to be ready
+      run: |
+        # Validate IP format before using
+        if [[ ! "${{ env.IP }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Invalid IP address: ${{ env.IP }}"
+          exit 1
+        fi
+    
+        # SSH readiness check with timeout
+        timeout 300 bash -c \
+        'until ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@$0 true; do
+          echo "Waiting for EC2 to be ready...";
+          sleep 10;
+        done' "${{ env.IP }}"
+    
 
     - name: Build and Push Docker Image
       run: |
