@@ -80,7 +80,7 @@ jobs:
             echo "Timeout reached after 5 minutes"
             exit 1
           fi
-          response=$(curl -s -w "%{http_code}" http://${{ env.EC2_DNS }}:3000/health || echo "failed")
+          response=$(curl -s -w "%{http_code}" http://${{ env.EC2_DNS }}:3000/health > /dev/null || echo "failed")
           if [ "$response" -eq 200 ]; then
             echo "Application is responding!"
             break
