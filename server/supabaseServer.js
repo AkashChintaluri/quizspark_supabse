@@ -1,16 +1,20 @@
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 import cors from 'cors';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Initialize Supabase client
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+// Health check endpoint for verification
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
+// Initialize Supabase client with hardcoded credentials
+const SUPABASE_URL="https://hntrpejpiboxnlbzrbbc.supabase.co"
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhudHJwZWpwaWJveG5sYnpyYmJjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MzI0MDg1MywiZXhwIjoyMDU4ODE2ODUzfQ.1ZCETVyCJaxcC-fqabKqrjWUESRagY9x0TcOgNTp0tI"
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Test the Supabase connection
 async function testConnection() {
@@ -577,6 +581,7 @@ function startServer() {
             const { data: subscriptionData, error: subError } = await supabase
                 .from('subscriptions')
                 .select('teacher_id')
+                event
                 .eq('student_id', studentIdInt);
 
             if (subError) throw subError;
@@ -652,7 +657,7 @@ function startServer() {
           console.error('Error fetching created quizzes:', error);
           res.status(500).json({ error: 'Failed to fetch quizzes' });
         }
-      });
+    });
 
     app.get('/api/attempted-quizzes/:user_id', async (req, res) => {
         const { user_id } = req.params;

@@ -36,51 +36,57 @@ jobs:
     - name: Deploy to EC2
       run: |
         # Create SSH key from secret
-        echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+        printf "%s\n" "${{ secrets.EC2_SSH_KEY }}" > key.pem
         chmod 600 key.pem
+        if [ ! -s key.pem ]; then
+          echo "Error: SSH key file is empty or not created"
+          exit 1
+        fi
         
         # Copy Docker image to EC2
         scp -o StrictHostKeyChecking=no -i key.pem quizspark-backend.tar.gz ubuntu@${{ env.EC2_IP }}:/home/ubuntu/
         
         # SSH into EC2 and run deployment commands
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ env.EC2_IP }} << 'EOF'
-          # Stop and remove existing container if it exists
+        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ env.EC2_IP }} << EOF
           docker stop quizspark-backend || true
           docker rm quizspark-backend || true
-          
-          # Load the new image
           docker load < /home/ubuntu/quizspark-backend.tar.gz
-          
-          # Run the container
           docker run -d \
             --name quizspark-backend \
+            --restart unless-stopped \
             -p 3000:3000 \
-            -e SUPABASE_URL=$SUPABASE_URL \
-            -e SUPABASE_KEY=$SUPABASE_KEY \
             quizspark-backend
+          # Clean up the tar.gz file
+          rm -f /home/ubuntu/quizspark-backend.tar.gz
+          # Wait briefly and check container status
+          sleep 5
+          docker ps
+          # Show initial logs for debugging
+          docker logs quizspark-backend
         EOF
+        
+        # Clean up local files
+        rm -f key.pem quizspark-backend.tar.gz
 
     - name: Verify Deployment
       run: |
-        # Wait for application to be ready
         timeout=300
         start_time=$(date +%s)
-        
+        sleep 10
         while true; do
           current_time=$(date +%s)
           elapsed_time=$((current_time - start_time))
-          
           if [ $elapsed_time -gt $timeout ]; then
             echo "Timeout reached after 5 minutes"
             exit 1
           fi
-          
-          if curl -s http://${{ env.EC2_DNS }}:3000; then
+          response=$(curl -s -w "%{http_code}" http://${{ env.EC2_DNS }}:3000/health || echo "failed")
+          if [ "$response" -eq 200 ]; then
             echo "Application is responding!"
             break
           else
-            echo "Waiting for application to be ready..."
-            sleep 10
+            echo "Waiting for application to be ready... (Response: $response)"
+            sleep 5
           fi
         done
 
