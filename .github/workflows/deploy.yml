@@ -93,6 +93,42 @@ jobs:
         
         echo "Instance IAM role: $INSTANCE_ROLE"
 
+        # Check VPC and security group settings
+        echo "Checking VPC and security group settings..."
+        VPC_ID=$(aws ec2 describe-instances \
+          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --query 'Reservations[0].Instances[0].VpcId' \
+          --output text)
+        
+        echo "VPC ID: $VPC_ID"
+        
+        # Check if VPC has internet gateway
+        IGW_ID=$(aws ec2 describe-internet-gateways \
+          --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
+          --query 'InternetGateways[0].InternetGatewayId' \
+          --output text)
+        
+        if [ -z "$IGW_ID" ] || [ "$IGW_ID" == "None" ]; then
+          echo "Warning: VPC does not have an internet gateway attached"
+        else
+          echo "Internet Gateway ID: $IGW_ID"
+        fi
+        
+        # Check security group rules
+        SG_ID=$(aws ec2 describe-instances \
+          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --query 'Reservations[0].Instances[0].SecurityGroups[0].GroupId' \
+          --output text)
+        
+        echo "Security Group ID: $SG_ID"
+        
+        # Check outbound rules
+        echo "Checking security group outbound rules..."
+        aws ec2 describe-security-group-rules \
+          --filters "Name=group-id,Values=$SG_ID" \
+          --query 'SecurityGroupRules[?IsEgress==`true`].[IpProtocol,FromPort,ToPort,CidrIpv4]' \
+          --output table
+
     - name: Check and Install SSM Agent
       run: |
         # First, check if instance is ready for SSM
