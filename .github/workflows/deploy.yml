@@ -75,12 +75,48 @@ jobs:
         
         echo "Deployment ID: $DEPLOYMENT_ID"
         
-        # Wait for deployment to complete
+        # Wait for deployment to complete with detailed status
         echo "Waiting for deployment to complete..."
-        aws deploy wait deployment-successful \
-          --deployment-id $DEPLOYMENT_ID
-        
-        echo "Deployment completed successfully"
+        while true; do
+          # Get deployment status
+          DEPLOYMENT_STATUS=$(aws deploy get-deployment \
+            --deployment-id $DEPLOYMENT_ID \
+            --query 'deploymentInfo.status' \
+            --output text)
+          
+          echo "Current deployment status: $DEPLOYMENT_STATUS"
+          
+          # Get deployment instance status
+          INSTANCE_STATUS=$(aws deploy list-deployment-instances \
+            --deployment-id $DEPLOYMENT_ID \
+            --query 'instancesList[0].status' \
+            --output text)
+          
+          echo "Instance status: $INSTANCE_STATUS"
+          
+          # Get deployment logs
+          if [ "$INSTANCE_STATUS" = "Failed" ]; then
+            echo "Deployment failed. Checking logs..."
+            aws deploy get-deployment-instance \
+              --deployment-id $DEPLOYMENT_ID \
+              --instance-id ${{ env.EC2_INSTANCE_ID }} \
+              --query 'instanceSummary.lifecycleEvents[].diagnostics' \
+              --output text
+            exit 1
+          fi
+          
+          if [ "$DEPLOYMENT_STATUS" = "Succeeded" ]; then
+            echo "Deployment completed successfully"
+            break
+          elif [ "$DEPLOYMENT_STATUS" = "Failed" ] || [ "$DEPLOYMENT_STATUS" = "Stopped" ]; then
+            echo "Deployment failed or was stopped"
+            echo "Checking deployment details..."
+            aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
+            exit 1
+          fi
+          
+          sleep 30
+        done
 
     - name: Verify Deployment
       run: |
