@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Simple Deploy
 
 on:
   push:
@@ -8,7 +8,6 @@ on:
 env:
   AWS_REGION: ap-south-1
   EC2_IP: "13.127.72.180"
-  EC2_INSTANCE_ID: "i-0158b19cc85a4e542"
   EC2_DNS: "ec2-13-127-72-180.ap-south-1.compute.amazonaws.com"
 
 jobs:
@@ -34,154 +33,36 @@ jobs:
         docker build -t quizspark-backend .
         docker save quizspark-backend | gzip > quizspark-backend.tar.gz
 
-    - name: Create deployment package
+    - name: Deploy to EC2
       run: |
-        mkdir -p deployment
-        cp quizspark-backend.tar.gz deployment/
-        cp appspec.yml deployment/
-        cp scripts/* deployment/
-        cd deployment
-        zip -r ../deployment.zip .
-
-    - name: Upload to S3
-      run: |
-        aws s3 cp deployment.zip s3://quizspark-deployments/deployment.zip
-
-    - name: Configure Deployment Group
-      run: |
-        # Check if deployment group exists
-        if ! aws deploy get-deployment-group \
-          --application-name quizspark-backend \
-          --deployment-group-name quizspark-production 2>/dev/null; then
-          
-          echo "Creating deployment group..."
-          aws deploy create-deployment-group \
-            --application-name quizspark-backend \
-            --deployment-group-name quizspark-production \
-            --ec2-tag-filters Key=Name,Value=quizspark-backend,Type=KEY_AND_VALUE \
-            --service-role-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):role/quizspark-codedeploy-role
-        else
-          echo "Updating deployment group..."
-          aws deploy update-deployment-group \
-            --application-name quizspark-backend \
-            --current-deployment-group-name quizspark-production \
-            --ec2-tag-filters Key=Name,Value=quizspark-backend,Type=KEY_AND_VALUE
-        fi
-
-        # Tag the EC2 instance if not already tagged
-        aws ec2 create-tags \
-          --resources ${{ env.EC2_INSTANCE_ID }} \
-          --tags Key=Name,Value=quizspark-backend
-
-    - name: Configure IAM Role
-      run: |
-        # Get the instance profile ARN
-        INSTANCE_PROFILE=$(aws ec2 describe-instances \
-          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-          --query 'Reservations[0].Instances[0].IamInstanceProfile.Arn' \
-          --output text)
+        # Create SSH key from secret
+        echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+        chmod 600 key.pem
         
-        # Extract the role name from the instance profile ARN
-        ROLE_NAME=$(echo $INSTANCE_PROFILE | cut -d'/' -f2)
+        # Copy Docker image to EC2
+        scp -o StrictHostKeyChecking=no -i key.pem quizspark-backend.tar.gz ubuntu@${{ env.EC2_IP }}:/home/ubuntu/
         
-        # Attach CodeDeploy policy to the existing role
-        aws iam attach-role-policy \
-          --role-name $ROLE_NAME \
-          --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
-
-    - name: Create Deployment
-      run: |
-        # Check for existing active deployment
-        ACTIVE_DEPLOYMENT=$(aws deploy list-deployments \
-          --application-name quizspark-backend \
-          --deployment-group-name quizspark-production \
-          --include-only-statuses InProgress \
-          --query 'deployments[0]' \
-          --output text)
-        
-        if [ -n "$ACTIVE_DEPLOYMENT" ] && [ "$ACTIVE_DEPLOYMENT" != "None" ]; then
-          echo "Found active deployment: $ACTIVE_DEPLOYMENT"
-          echo "Waiting for it to complete..."
+        # SSH into EC2 and run deployment commands
+        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ env.EC2_IP }} << 'EOF'
+          # Stop and remove existing container if it exists
+          docker stop quizspark-backend || true
+          docker rm quizspark-backend || true
           
-          # Wait for existing deployment to complete
-          while true; do
-            DEPLOYMENT_STATUS=$(aws deploy get-deployment \
-              --deployment-id $ACTIVE_DEPLOYMENT \
-              --query 'deploymentInfo.status' \
-              --output text)
-            
-            echo "Current deployment status: $DEPLOYMENT_STATUS"
-            
-            if [ "$DEPLOYMENT_STATUS" = "Succeeded" ]; then
-              echo "Previous deployment completed successfully"
-              break
-            elif [ "$DEPLOYMENT_STATUS" = "Failed" ] || [ "$DEPLOYMENT_STATUS" = "Stopped" ]; then
-              echo "Previous deployment failed or was stopped"
-              echo "Stopping it..."
-              aws deploy stop-deployment --deployment-id $ACTIVE_DEPLOYMENT
-              break
-            fi
-            
-            sleep 30
-          done
-        fi
-        
-        # Create new deployment
-        DEPLOYMENT_ID=$(aws deploy create-deployment \
-          --application-name quizspark-backend \
-          --deployment-group-name quizspark-production \
-          --s3-location bucket=quizspark-deployments,bundleType=zip,key=deployment.zip \
-          --query 'deploymentId' \
-          --output text)
-        
-        echo "New Deployment ID: $DEPLOYMENT_ID"
-        
-        # Wait for new deployment to complete with detailed status
-        echo "Waiting for new deployment to complete..."
-        while true; do
-          # Get deployment status
-          DEPLOYMENT_STATUS=$(aws deploy get-deployment \
-            --deployment-id $DEPLOYMENT_ID \
-            --query 'deploymentInfo.status' \
-            --output text)
+          # Load the new image
+          docker load < /home/ubuntu/quizspark-backend.tar.gz
           
-          echo "Current deployment status: $DEPLOYMENT_STATUS"
-          
-          # Get deployment instance status
-          INSTANCE_STATUS=$(aws deploy list-deployment-instances \
-            --deployment-id $DEPLOYMENT_ID \
-            --query 'instancesList[0].status' \
-            --output text)
-          
-          echo "Instance status: $INSTANCE_STATUS"
-          
-          # Get deployment logs
-          if [ "$INSTANCE_STATUS" = "Failed" ]; then
-            echo "Deployment failed. Checking logs..."
-            aws deploy get-deployment-instance \
-              --deployment-id $DEPLOYMENT_ID \
-              --instance-id ${{ env.EC2_INSTANCE_ID }} \
-              --query 'instanceSummary.lifecycleEvents[].diagnostics' \
-              --output text
-            exit 1
-          fi
-          
-          if [ "$DEPLOYMENT_STATUS" = "Succeeded" ]; then
-            echo "Deployment completed successfully"
-            break
-          elif [ "$DEPLOYMENT_STATUS" = "Failed" ] || [ "$DEPLOYMENT_STATUS" = "Stopped" ]; then
-            echo "Deployment failed or was stopped"
-            echo "Checking deployment details..."
-            aws deploy get-deployment --deployment-id $DEPLOYMENT_ID
-            exit 1
-          fi
-          
-          sleep 30
-        done
+          # Run the container
+          docker run -d \
+            --name quizspark-backend \
+            -p 3000:3000 \
+            -e SUPABASE_URL=$SUPABASE_URL \
+            -e SUPABASE_KEY=$SUPABASE_KEY \
+            quizspark-backend
+        EOF
 
     - name: Verify Deployment
       run: |
-        # Set timeout to 5 minutes
+        # Wait for application to be ready
         timeout=300
         start_time=$(date +%s)
         
