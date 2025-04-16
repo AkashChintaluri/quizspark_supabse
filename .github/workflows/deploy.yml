@@ -125,8 +125,13 @@ jobs:
           
           if [ $elapsed_time -gt $timeout ]; then
             echo "Deployment timeout reached after 10 minutes"
-            echo "Checking deployment status..."
+            echo "Checking deployment status and details..."
+            echo "=== Deployment Overview ==="
             aws deploy get-deployment --deployment-id ${{ steps.deploy.outputs.deployment_id }}
+            echo "=== Deployment Instance Status ==="
+            aws deploy list-deployment-instances --deployment-id ${{ steps.deploy.outputs.deployment_id }} --query 'instancesList[]' --output table
+            echo "=== Deployment Logs ==="
+            aws deploy get-deployment-instance --deployment-id ${{ steps.deploy.outputs.deployment_id }} --instance-id $(aws ec2 describe-instances --filters "Name=tag:Name,Values=quizspark-backend" --query 'Reservations[0].Instances[0].InstanceId' --output text) --query 'instanceSummary.lifecycleEvents[].diagnostics' --output text
             exit 1
           fi
           
@@ -137,6 +142,13 @@ jobs:
             
           echo "Current deployment status: $status"
           
+          # Get deployment instance status
+          instance_status=$(aws deploy list-deployment-instances \
+            --deployment-id ${{ steps.deploy.outputs.deployment_id }} \
+            --query 'instancesList[0].status' \
+            --output text)
+          echo "Instance status: $instance_status"
+          
           if [ "$status" = "Succeeded" ]; then
             echo "Deployment completed successfully"
             break
@@ -144,6 +156,10 @@ jobs:
             echo "Deployment failed or was stopped"
             echo "Checking deployment details..."
             aws deploy get-deployment --deployment-id ${{ steps.deploy.outputs.deployment_id }}
+            echo "=== Deployment Instance Status ==="
+            aws deploy list-deployment-instances --deployment-id ${{ steps.deploy.outputs.deployment_id }} --query 'instancesList[]' --output table
+            echo "=== Deployment Logs ==="
+            aws deploy get-deployment-instance --deployment-id ${{ steps.deploy.outputs.deployment_id }} --instance-id $(aws ec2 describe-instances --filters "Name=tag:Name,Values=quizspark-backend" --query 'Reservations[0].Instances[0].InstanceId' --output text) --query 'instanceSummary.lifecycleEvents[].diagnostics' --output text
             exit 1
           fi
           
