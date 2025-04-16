@@ -63,23 +63,21 @@ jobs:
         fi
 
     - name: Deploy using CodeDeploy
+      id: deploy
       run: |
-        aws deploy create-deployment \
+        DEPLOYMENT_ID=$(aws deploy create-deployment \
           --application-name quizspark-backend \
           --deployment-group-name quizspark-production \
-          --s3-location bucket=quizspark-deployments,bundleType=zip,key=deployment.zip
+          --s3-location bucket=quizspark-deployments,bundleType=zip,key=deployment.zip \
+          --query 'deploymentId' \
+          --output text)
+        echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
 
     - name: Wait for deployment
       run: |
-        DEPLOYMENT_ID=$(aws deploy list-deployments \
-          --application-name quizspark-backend \
-          --deployment-group-name quizspark-production \
-          --max-items 1 \
-          --query 'deployments[0]' \
-          --output text)
-        
+        echo "Waiting for deployment ${{ steps.deploy.outputs.deployment_id }} to complete..."
         aws deploy wait deployment-successful \
-          --deployment-id $DEPLOYMENT_ID
+          --deployment-id ${{ steps.deploy.outputs.deployment_id }}
 
     - name: Verify Deployment
       run: |
