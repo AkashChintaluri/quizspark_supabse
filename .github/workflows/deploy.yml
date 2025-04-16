@@ -129,6 +129,82 @@ jobs:
           --query 'SecurityGroupRules[?IsEgress==`true`].[IpProtocol,FromPort,ToPort,CidrIpv4]' \
           --output table
 
+    - name: Verify IAM Role Permissions
+      run: |
+        # Get the IAM role name from the instance profile
+        INSTANCE_ROLE=$(aws ec2 describe-instances \
+          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
+          --query 'Reservations[0].Instances[0].IamInstanceProfile.Arn' \
+          --output text)
+        
+        ROLE_NAME=$(echo $INSTANCE_ROLE | cut -d'/' -f2)
+        echo "IAM Role Name: $ROLE_NAME"
+        
+        # Check if role has SSM permissions
+        echo "Checking IAM role permissions..."
+        aws iam get-role-policy \
+          --role-name $ROLE_NAME \
+          --policy-name SSMPermissions \
+          --query 'PolicyDocument' \
+          --output text || true
+        
+        # If policy doesn't exist or doesn't have required permissions, create/update it
+        echo "Updating IAM role permissions..."
+        aws iam put-role-policy \
+          --role-name $ROLE_NAME \
+          --policy-name SSMPermissions \
+          --policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssm:DescribeAssociation",
+                  "ssm:GetDeployablePatchSnapshotForInstance",
+                  "ssm:GetDocument",
+                  "ssm:DescribeDocument",
+                  "ssm:GetManifest",
+                  "ssm:GetParameter",
+                  "ssm:GetParameters",
+                  "ssm:ListAssociations",
+                  "ssm:ListInstanceAssociations",
+                  "ssm:PutInventory",
+                  "ssm:PutComplianceItems",
+                  "ssm:PutConfigurePackageResult",
+                  "ssm:UpdateAssociationStatus",
+                  "ssm:UpdateInstanceAssociationStatus",
+                  "ssm:UpdateInstanceInformation"
+                ],
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssmmessages:CreateControlChannel",
+                  "ssmmessages:CreateDataChannel",
+                  "ssmmessages:OpenControlChannel",
+                  "ssmmessages:OpenDataChannel"
+                ],
+                "Resource": "*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ec2messages:AcknowledgeMessage",
+                  "ec2messages:DeleteMessage",
+                  "ec2messages:FailMessage",
+                  "ec2messages:GetEndpoint",
+                  "ec2messages:GetMessages",
+                  "ec2messages:SendReply"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }'
+        
+        echo "Waiting for IAM changes to propagate..."
+        sleep 30
+
     - name: Check and Install SSM Agent
       run: |
         # First, check if instance is ready for SSM
@@ -141,21 +217,6 @@ jobs:
         # Wait for instance to be ready
         echo "Waiting for instance to be ready..."
         aws ec2 wait instance-status-ok --instance-ids ${{ env.EC2_INSTANCE_ID }}
-        
-        # Restart SSM agent to ensure proper registration
-        echo "Restarting SSM agent..."
-        aws ssm send-command \
-          --instance-ids ${{ env.EC2_INSTANCE_ID }} \
-          --document-name "AWS-RunShellScript" \
-          --parameters 'commands=[
-            "sudo systemctl stop amazon-ssm-agent",
-            "sudo systemctl start amazon-ssm-agent",
-            "sudo systemctl status amazon-ssm-agent"
-          ]' \
-          --timeout-seconds 600
-        
-        echo "Waiting for SSM agent to restart..."
-        sleep 30
         
         # Check SSM agent registration
         echo "Checking SSM agent registration..."
