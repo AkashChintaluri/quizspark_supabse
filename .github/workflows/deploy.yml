@@ -8,6 +8,8 @@ on:
 env:
   AWS_REGION: ap-south-1
   EC2_IP: "13.127.72.180"  # Using the existing instance's IP
+  EC2_INSTANCE_ID: "i-0158b19cc85a4e542"
+  EC2_DNS: "ec2-13-127-72-180.ap-south-1.compute.amazonaws.com"
 
 jobs:
   deploy:
@@ -64,16 +66,16 @@ jobs:
 
     - name: Check and Install CodeDeploy Agent
       run: |
-        # Save SSH key
-        echo "${{ secrets.EC2_SSH_KEY }}" > quizzespark.pem
-        chmod 400 quizzespark.pem
+        # Get the private key from AWS
+        aws ec2 describe-key-pairs --key-names quizspark --query 'KeyPairs[0].KeyMaterial' --output text > quizspark.pem
+        chmod 400 quizspark.pem
         
         # Check if agent is running
-        if ! ssh -i quizzespark.pem -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} "systemctl is-active codedeploy-agent" 2>/dev/null; then
+        if ! ssh -i quizspark.pem -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} "systemctl is-active codedeploy-agent" 2>/dev/null; then
           echo "Installing CodeDeploy agent..."
           
           # Install dependencies and CodeDeploy agent
-          ssh -i quizzespark.pem -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << 'EOF'
+          ssh -i quizspark.pem -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << 'EOF'
             sudo apt-get update
             sudo apt-get install -y ruby
             sudo apt-get install -y wget
@@ -91,7 +93,7 @@ jobs:
         fi
         
         # Clean up SSH key
-        rm -f quizzespark.pem
+        rm -f quizspark.pem
 
     - name: Check for Active Deployment
       id: check_deployment
@@ -162,7 +164,7 @@ jobs:
             echo "=== Deployment Instance Status ==="
             aws deploy list-deployment-instances --deployment-id ${{ steps.deploy.outputs.deployment_id }} --query 'instancesList[]' --output table
             echo "=== Deployment Logs ==="
-            aws deploy get-deployment-instance --deployment-id ${{ steps.deploy.outputs.deployment_id }} --instance-id $(aws ec2 describe-instances --filters "Name=tag:Name,Values=quizspark-backend" --query 'Reservations[0].Instances[0].InstanceId' --output text) --query 'instanceSummary.lifecycleEvents[].diagnostics' --output text
+            aws deploy get-deployment-instance --deployment-id ${{ steps.deploy.outputs.deployment_id }} --instance-id ${{ env.EC2_INSTANCE_ID }} --query 'instanceSummary.lifecycleEvents[].diagnostics' --output text
             exit 1
           fi
           
@@ -190,7 +192,7 @@ jobs:
             echo "=== Deployment Instance Status ==="
             aws deploy list-deployment-instances --deployment-id ${{ steps.deploy.outputs.deployment_id }} --query 'instancesList[]' --output table
             echo "=== Deployment Logs ==="
-            aws deploy get-deployment-instance --deployment-id ${{ steps.deploy.outputs.deployment_id }} --instance-id $(aws ec2 describe-instances --filters "Name=tag:Name,Values=quizspark-backend" --query 'Reservations[0].Instances[0].InstanceId' --output text) --query 'instanceSummary.lifecycleEvents[].diagnostics' --output text
+            aws deploy get-deployment-instance --deployment-id ${{ steps.deploy.outputs.deployment_id }} --instance-id ${{ env.EC2_INSTANCE_ID }} --query 'instanceSummary.lifecycleEvents[].diagnostics' --output text
             exit 1
           fi
           
@@ -199,11 +201,11 @@ jobs:
 
     - name: Verify Deployment
       run: |
-        until curl -s http://${{ env.EC2_IP }}:3000; do
+        until curl -s http://${{ env.EC2_DNS }}:3000; do
           echo "Waiting for application to be ready..."
           sleep 5
         done
 
     - name: Output Deployment URL
       run: |
-        echo "Backend deployed at: http://${{ env.EC2_IP }}:3000"
+        echo "Backend deployed at: http://${{ env.EC2_DNS }}:3000"
