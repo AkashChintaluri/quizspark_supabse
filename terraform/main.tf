@@ -11,8 +11,16 @@ provider "aws" {
   region = "ap-south-1"
 }
 
+data "aws_security_group" "existing_sg" {
+  name = "quizspark-sg"
+}
+
+resource "random_id" "sg_suffix" {
+  byte_length = 4
+}
+
 resource "aws_security_group" "quizspark_sg" {
-  name        = "quizspark-sg"
+  name        = "quizspark-sg-${random_id.sg_suffix.hex}"
   description = "Security group for QuizSpark backend"
 
   ingress {
@@ -40,7 +48,8 @@ resource "aws_security_group" "quizspark_sg" {
 resource "aws_instance" "quizspark_backend" {
   ami                    = "ami-0f5ee92e2d63afc18" # Ubuntu 20.04 LTS in ap-south-1
   instance_type          = "t2.micro"
-  vpc_security_group_ids = [aws_security_group.quizspark_sg.id]
+  vpc_security_group_ids = [data.aws_security_group.existing_sg.id]
+  key_name               = "quizspark"
   user_data              = <<-EOF
               #!/bin/bash
               apt-get update
