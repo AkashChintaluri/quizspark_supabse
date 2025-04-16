@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3000', // Your backend server
+        target: 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000', // Your EC2 instance
         changeOrigin: true,
         secure: false
       }

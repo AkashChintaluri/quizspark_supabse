@@ -581,7 +581,6 @@ function startServer() {
             const { data: subscriptionData, error: subError } = await supabase
                 .from('subscriptions')
                 .select('teacher_id')
-                event
                 .eq('student_id', studentIdInt);
 
             if (subError) throw subError;
