@@ -27,6 +27,11 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ env.AWS_REGION }}
 
+    - name: Install required tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
     - name: Install Terraform
       uses: hashicorp/setup-terraform@v2
       with:
@@ -47,9 +52,8 @@ jobs:
     - name: Get EC2 Public IP
       id: get-ip
       run: |
-        # Increase retries and add JSON output
         for i in {1..20}; do
-          IP=$(terraform output -json 2>/dev/null | jq -r '.instance_public_ip.value')
+          IP=$(terraform output -raw instance_public_ip 2>/dev/null)
           if [[ "$IP" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
             echo "IP=$IP" >> $GITHUB_ENV
             echo "EC2_IP=$IP" >> $GITHUB_OUTPUT
@@ -61,7 +65,6 @@ jobs:
         echo "❌ Failed to get IP after 20 attempts"
         exit 1
       working-directory: ./terraform
-    
 
     - name: Wait for EC2 to be ready
       run: |
@@ -76,7 +79,6 @@ jobs:
           echo 'Waiting for EC2 SSH access...';
           sleep 10;
         done"
-    
 
     - name: Build and Push Docker Image
       run: |
