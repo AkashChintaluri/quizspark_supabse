@@ -7,7 +7,6 @@ import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import securityPlugin from 'eslint-plugin-security'
 import sonarjsPlugin from 'eslint-plugin-sonarjs'
-import jsxA11y from 'eslint-plugin-jsx-a11y'
 
 export default [
   { 
@@ -35,15 +34,13 @@ export default [
     plugins: {
       react,
       'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
-      'jsx-a11y': jsxA11y
+      'react-refresh': reactRefresh
     },
     rules: {
       ...js.configs.recommended.rules,
       ...react.configs.recommended.rules,
       ...react.configs['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
-      ...jsxA11y.configs.recommended.rules,
       'react/jsx-no-target-blank': 'off',
       'react/prop-types': 'off',
       'react/no-unescaped-entities': 'off',

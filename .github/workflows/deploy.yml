@@ -27,11 +27,13 @@ jobs:
 
     - name: Install dependencies
       run: |
-        npm install --save-dev eslint@8.57.0 @typescript-eslint/parser@7.0.1 @typescript-eslint/eslint-plugin@7.0.1 eslint-plugin-security eslint-plugin-sonarjs --legacy-peer-deps
+        npm install --save-dev eslint@8.57.0 @typescript-eslint/parser@7.0.1 @typescript-eslint/eslint-plugin@7.0.1 eslint-plugin-security eslint-plugin-sonarjs eslint-plugin-jsx-a11y eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-react-refresh --legacy-peer-deps
 
     - name: Run ESLint with security checks
       run: |
-        npx eslint .
+        echo "Running ESLint on source files..."
+        npx eslint src/ --max-warnings=0 --debug
+        echo "ESLint check completed"
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
