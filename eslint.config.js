@@ -97,7 +97,7 @@ export default [
       'sonarjs/no-nested-conditional': 'warn',
       'sonarjs/no-ignored-exceptions': 'warn',
       'sonarjs/no-use-of-empty-return-value': 'warn',
-      'sonarjs/no-nested-functions': ['warn', { maxNestingLevel: 4 }],
+      'sonarjs/no-nested-functions': 'warn',
       'sonarjs/no-nested-template-literals': 'warn',
       'sonarjs/no-clear-text-protocols': 'warn',
       'sonarjs/pseudo-random': 'warn',
