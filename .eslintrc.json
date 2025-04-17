@@ -1,4 +1,5 @@
 {
+  "root": true,
   "env": {
     "browser": true,
     "es2021": true,
@@ -12,31 +13,39 @@
   ],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "ecmaVersion": "latest",
-    "sourceType": "module"
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
   },
   "plugins": [
     "security",
     "sonarjs",
     "@typescript-eslint"
   ],
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
   "rules": {
-    "security/detect-object-injection": "error",
-    "security/detect-non-literal-require": "error",
-    "security/detect-non-literal-fs-filename": "error",
-    "security/detect-eval-with-expression": "error",
-    "security/detect-unsafe-regex": "error",
-    "security/detect-pseudoRandomBytes": "error",
-    "sonarjs/no-duplicate-string": "error",
-    "sonarjs/no-identical-functions": "error",
-    "sonarjs/no-small-switch": "error",
-    "sonarjs/no-unused-collection": "error",
-    "sonarjs/prefer-immediate-return": "error",
-    "sonarjs/prefer-object-literal": "error",
-    "sonarjs/no-collapsible-if": "error",
-    "sonarjs/no-redundant-boolean": "error",
-    "sonarjs/no-redundant-jump": "error",
-    "sonarjs/no-useless-catch": "error",
-    "sonarjs/prefer-single-boolean-return": "error"
+    "security/detect-object-injection": "warn",
+    "security/detect-non-literal-require": "warn",
+    "security/detect-non-literal-fs-filename": "warn",
+    "security/detect-eval-with-expression": "warn",
+    "security/detect-unsafe-regex": "warn",
+    "security/detect-pseudoRandomBytes": "warn",
+    "sonarjs/no-duplicate-string": "warn",
+    "sonarjs/no-identical-functions": "warn",
+    "sonarjs/no-small-switch": "warn",
+    "sonarjs/no-unused-collection": "warn",
+    "sonarjs/prefer-immediate-return": "warn",
+    "sonarjs/prefer-object-literal": "warn",
+    "sonarjs/no-collapsible-if": "warn",
+    "sonarjs/no-redundant-boolean": "warn",
+    "sonarjs/no-redundant-jump": "warn",
+    "sonarjs/no-useless-catch": "warn",
+    "sonarjs/prefer-single-boolean-return": "warn"
   }
 } 

@@ -27,11 +27,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        npm install --save-dev eslint eslint-plugin-security eslint-plugin-sonarjs @typescript-eslint/parser @typescript-eslint/eslint-plugin
+        npm install --save-dev eslint@8.56.0 eslint-plugin-security eslint-plugin-sonarjs @typescript-eslint/parser @typescript-eslint/eslint-plugin
 
     - name: Run ESLint with security checks
       run: |
-        npx eslint . --ext .js,.jsx,.ts,.tsx --config .eslintrc.json
+        npx eslint . --ext .js,.jsx,.ts,.tsx --config .eslintrc.json --resolve-plugins-relative-to .
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
