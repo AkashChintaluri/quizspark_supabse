@@ -9,9 +9,17 @@ import securityPlugin from 'eslint-plugin-security'
 import sonarjsPlugin from 'eslint-plugin-sonarjs'
 
 export default [
-  { ignores: ['dist'] },
+  { 
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.next/**',
+      '**/coverage/**'
+    ]
+  },
   {
-    files: ['**/*.{js,jsx}'],
+    files: ['src/**/*.{js,jsx}'],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
@@ -40,7 +48,7 @@ export default [
     },
   },
   {
-    files: ['**/*.{js,jsx,ts,tsx}'],
+    files: ['src/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -76,7 +84,13 @@ export default [
       'sonarjs/no-redundant-boolean': 'warn',
       'sonarjs/no-redundant-jump': 'warn',
       'sonarjs/no-useless-catch': 'warn',
-      'sonarjs/prefer-single-boolean-return': 'warn'
+      'sonarjs/prefer-single-boolean-return': 'warn',
+      'sonarjs/no-nested-assignment': 'warn',
+      'sonarjs/block-scoped-var': 'warn',
+      'sonarjs/cognitive-complexity': ['warn', 20],
+      'sonarjs/no-nested-conditional': 'warn',
+      'sonarjs/no-ignored-exceptions': 'warn',
+      'sonarjs/no-use-of-empty-return-value': 'warn'
     }
   }
 ]
