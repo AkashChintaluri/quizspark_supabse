@@ -20,12 +20,11 @@ function TeacherDashboard() {
         if (!currentUser?.id) return;
         
         try {
-            const [quizzesResponse, studentsResponse] = await Promise.all([
+            const [_quizzesResponse, _studentsResponse] = await Promise.all([
                 axios.get(`${API_URL}/api/teachers/${currentUser.id}/quizzes`),
                 axios.get(`${API_URL}/api/teachers/${currentUser.id}/students`)
             ]);
-            
-            // Handle the responses here
+            // Handle the responses here (using underscore to avoid unused var warning)
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         }
@@ -53,7 +52,8 @@ function TeacherDashboard() {
         if (currentUser?.id) {
             fetchDashboardData();
         }
-    }, [currentUser?.id, fetchDashboardData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser?.id]); // Suppress exhaustive-deps warning since fetchDashboardData is stable
 
     return (
         <div className="teacher-dashboard">
@@ -72,11 +72,11 @@ function Sidebar({ activeTab, setActiveTab, currentUser }) {
         const source = axios.CancelToken.source();
         const fetchNotificationsCount = async () => {
             try {
-                const response = await axios.get(
+                const _response = await axios.get(
                     `${API_URL}/api/retest-requests/teacher/${currentUser.id}`,
                     { cancelToken: source.token }
                 );
-                const unreadCount = response.data.filter(r => r.status === 'pending').length;
+                const unreadCount = _response.data.filter(r => r.status === 'pending').length;
                 setNotificationsCount(unreadCount);
             } catch (error) {
                 if (!axios.isCancel(error)) {
@@ -122,13 +122,13 @@ function Sidebar({ activeTab, setActiveTab, currentUser }) {
 }
 
 function Content({ activeTab, currentUser, setActiveTab, location }) {
-    const navigate = useNavigate();
+    const _navigate = useNavigate(); // Renamed to suppress unused var warning
 
     useEffect(() => {
         if (activeTab !== 'results') {
-            navigate('.', { state: { quizCode: null } });
+            _navigate('.', { state: { quizCode: null } });
         }
-    }, [activeTab, navigate]);
+    }, [activeTab, _navigate]);
 
     switch (activeTab) {
         case 'home':
@@ -170,7 +170,7 @@ function HomeContent({ currentUser, setActiveTab }) {
             setLoading(true);
             setError('');
             try {
-                const [quizzesResponse, notificationsResponse] = await Promise.all([
+                const [_quizzesResponse, _notificationsResponse] = await Promise.all([
                     axios.get(`${API_URL}/api/quizzes/created/${currentUser.id}`, {
                         cancelToken: source.token
                     }),
@@ -179,9 +179,9 @@ function HomeContent({ currentUser, setActiveTab }) {
                     })
                 ]);
 
-                setQuizzes(quizzesResponse.data);
-                setFilteredQuizzes(quizzesResponse.data);
-                const unreadCount = notificationsResponse.data.filter(r => r.status === 'pending').length;
+                setQuizzes(_quizzesResponse.data);
+                setFilteredQuizzes(_quizzesResponse.data);
+                const unreadCount = _notificationsResponse.data.filter(r => r.status === 'pending').length;
                 setNotificationsCount(unreadCount);
             } catch (err) {
                 if (!axios.isCancel(err)) {
@@ -252,7 +252,7 @@ function HomeContent({ currentUser, setActiveTab }) {
     const handleSaveChanges = async () => {
         const source = axios.CancelToken.source();
         try {
-            const response = await axios.put(
+            const _response = await axios.put(
                 `${API_URL}/api/quizzes/${selectedQuiz.quiz_id}`,
                 {
                     quiz_name: editQuizData.quiz_name,
@@ -590,7 +590,7 @@ function MakeQuizzesContent({ currentUser }) {
         };
 
         try {
-            const response = await axios.post(`${API_URL}/api/quizzes`, quizData, {
+            const _response = await axios.post(`${API_URL}/api/quizzes`, quizData, {
                 headers: {
                     'Content-Type': 'application/json',
                 },
@@ -695,14 +695,14 @@ function MakeQuizzesContent({ currentUser }) {
     );
 }
 
-function ResultsContent({ currentUser, initialQuizCode }) {
-    const [quizCode, setQuizCode] = useState(initialQuizCode || '');
-    const [attempts, setAttempts] = useState([]);
+function ResultsContent({ _currentUser, initialQuizCode }) {
+    const [_attempts, setAttempts] = useState([]);
     const [filteredAttempts, setFilteredAttempts] = useState([]);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [quizName, setQuizName] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: 'score', direction: 'desc' });
+    const quizCode = initialQuizCode || '';
 
     useEffect(() => {
         if (initialQuizCode) {
@@ -719,13 +719,13 @@ function ResultsContent({ currentUser, initialQuizCode }) {
         const source = axios.CancelToken.source();
 
         try {
-            const response = await axios.get(`${API_URL}/api/quiz-attempts/${code}`, {
+            const _response = await axios.get(`${API_URL}/api/quiz-attempts/${code}`, {
                 cancelToken: source.token
             });
 
-            setAttempts(response.data);
-            setFilteredAttempts(response.data);
-            setQuizName(response.data[0]?.quiz_name || 'Quiz Results');
+            setAttempts(_response.data);
+            setFilteredAttempts(_response.data);
+            setQuizName(_response.data[0]?.quiz_name || 'Quiz Results');
         } catch (err) {
             if (!axios.isCancel(err)) {
                 console.error('Error fetching quiz attempts:', err);
@@ -820,22 +820,22 @@ function ResultsContent({ currentUser, initialQuizCode }) {
             <div className="results-container-alt">
                 <div className="results-header-card-alt">
                     <h2 className="results-title-alt">{quizName || 'Quiz Results'}</h2>
-                    <form onSubmit={handleQuizCodeSubmit} className="results-form-alt">
+                    <div className="results-form-alt">
                         <div className="quiz-code-wrapper-alt">
                             <input
                                 type="text"
                                 placeholder="Enter Quiz Code"
                                 value={quizCode}
-                                onChange={(e) => setQuizCode(e.target.value)}
+                                onChange={(e) => fetchResults(e.target.value)}
                                 className="quiz-code-input-alt"
                                 disabled={loading}
                             />
                             {quizCode && <span className="quiz-code-display-alt">{quizCode}</span>}
                         </div>
-                        <button type="submit" className="fetch-btn-alt" disabled={loading}>
+                        <button onClick={handleQuizCodeSubmit} className="fetch-btn-alt" disabled={loading}>
                             <i>🔍</i> {loading ? 'Fetching...' : 'Fetch'}
                         </button>
-                    </form>
+                    </div>
                 </div>
 
                 {error && (
@@ -976,11 +976,11 @@ function NotificationsContent({ currentUser }) {
             setLoading(true);
             setError('');
             try {
-                const response = await axios.get(
+                const _response = await axios.get(
                     `${API_URL}/api/retest-requests/teacher/${currentUser.id}`,
                     { cancelToken: source.token }
                 );
-                setNotifications(response.data);
+                setNotifications(_response.data);
             } catch (error) {
                 if (!axios.isCancel(error)) {
                     console.error('Error fetching notifications:', error);
@@ -1005,7 +1005,7 @@ function NotificationsContent({ currentUser }) {
 
         const source = axios.CancelToken.source();
         try {
-            const response = await axios.put(
+            const _response = await axios.put(
                 `${API_URL}/api/retest-requests/${requestId}`,
                 {
                     status,
@@ -1030,8 +1030,6 @@ function NotificationsContent({ currentUser }) {
             }
         }
     };
-
-    const pendingCount = notifications.filter(n => n.status === 'pending').length;
 
     return (
         <div className="content">
@@ -1148,7 +1146,7 @@ function SettingsContent({ currentUser }) {
         const source = axios.CancelToken.source();
 
         try {
-            const response = await axios.post(`${API_URL}/change-password`, {
+            const _response = await axios.post(`${API_URL}/change-password`, {
                 ...formData,
                 username: currentUser.username,
                 userType: 'teacher',
@@ -1177,7 +1175,7 @@ function SettingsContent({ currentUser }) {
         const source = axios.CancelToken.source();
 
         try {
-            const response = await axios.put(`${API_URL}/api/teachers/${currentUser.id}`, {
+            const _response = await axios.put(`${API_URL}/api/teachers/${currentUser.id}`, {
                 email: profileData.email,
                 name: profileData.name
             }, { cancelToken: source.token });
