@@ -8,6 +8,12 @@ import axios from 'axios';
 import './StudentDashboard.css';
 import './TakeQuiz.css';
 import TeacherList from './TeacherList';
+import { Bar } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+
+const API_URL = 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000';
 
 function StudentDashboard() {
     const [activeTab, setActiveTab] = useState('home');
@@ -163,15 +169,11 @@ function HomeContent({ currentUser, setActiveTab }) {
                 if (!currentUser?.id) {
                     throw new Error('Invalid user session');
                 }
-                const apiUrl = import.meta.env.VITE_API_URL;
-                if (!apiUrl) {
-                    throw new Error('API URL is not defined in environment variables');
-                }
 
                 const endpoints = [
-                    `${apiUrl}/api/upcoming-quizzes/${currentUser.id}`,
-                    `${apiUrl}/api/user-stats/${currentUser.id}`,
-                    `${apiUrl}/api/attempted-quizzes/${currentUser.id}`,
+                    `${API_URL}/api/upcoming-quizzes/${currentUser.id}`,
+                    `${API_URL}/api/user-stats/${currentUser.id}`,
+                    `${API_URL}/api/attempted-quizzes/${currentUser.id}`,
                 ];
 
                 const [upcomingResponse, statsResponse, attemptedResponse] = await Promise.all(
@@ -324,13 +326,9 @@ function TakeQuizContent({ currentUser }) {
             if (!currentUser?.id) {
                 throw new Error('User not authenticated');
             }
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
-            }
 
             const attemptCheckResponse = await axios.get(
-                `${apiUrl}/api/check-quiz-attempt/${code}/${currentUser.id}`
+                `${API_URL}/api/check-quiz-attempt/${code}/${currentUser.id}`
             );
             if (attemptCheckResponse.data.hasAttempted) {
                 setError(attemptCheckResponse.data.message);
@@ -338,7 +336,7 @@ function TakeQuizContent({ currentUser }) {
                 return;
             }
 
-            const response = await axios.get(`${apiUrl}/api/quizzes/${code}`);
+            const response = await axios.get(`${API_URL}/api/quizzes/${code}`);
             setQuizData(response.data);
             setShowQuizCodeInput(false);
         } catch (err) {
@@ -370,12 +368,8 @@ function TakeQuizContent({ currentUser }) {
             if (!currentUser?.id) {
                 throw new Error('User not authenticated');
             }
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
-            }
 
-            const response = await axios.post(`${apiUrl}/api/submit-quiz`, {
+            const response = await axios.post(`${API_URL}/api/submit-quiz`, {
                 quiz_code: quizCode,
                 user_id: currentUser.id,
                 answers: selectedAnswers,
@@ -487,11 +481,7 @@ function ResultsContent({ currentUser, setActiveTab }) {
             setLoading(true);
             setError('');
             try {
-                const apiUrl = import.meta.env.VITE_API_URL;
-                if (!apiUrl) {
-                    throw new Error('API URL is not defined in environment variables');
-                }
-                const response = await axios.get(`${apiUrl}/api/quiz-result/${code}/${currentUser.id}`);
+                const response = await axios.get(`${API_URL}/api/quiz-result/${code}/${currentUser.id}`);
                 if (response.status !== 200) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -519,11 +509,7 @@ function ResultsContent({ currentUser, setActiveTab }) {
     const handleCheckLeaderboard = async () => {
         if (quizResult?.quiz_id) {
             try {
-                const apiUrl = import.meta.env.VITE_API_URL;
-                if (!apiUrl) {
-                    throw new Error('API URL is not defined in environment variables');
-                }
-                const response = await axios.get(`${apiUrl}/api/quizzes/id/${quizResult.quiz_id}`);
+                const response = await axios.get(`${API_URL}/api/quizzes/id/${quizResult.quiz_id}`);
                 if (response.data?.quiz_code) {
                     setActiveTab('leaderboard');
                     navigate(`/student-dashboard/leaderboard/${response.data.quiz_code}`, {
@@ -540,11 +526,7 @@ function ResultsContent({ currentUser, setActiveTab }) {
         setRetestLoading(true);
         setRetestMessage('');
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
-            }
-            const response = await axios.post(`${apiUrl}/api/retest-requests`, {
+            const response = await axios.post(`${API_URL}/api/retest-requests`, {
                 student_id: currentUser.id,
                 quiz_id: quizResult.quiz_id,
                 attempt_id: attemptId
@@ -668,11 +650,7 @@ function LeaderboardContent({ currentUser }) {
         setLoading(true);
         setError('');
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
-            }
-            const response = await axios.get(`${apiUrl}/api/quiz-results/${code}/leaderboard`);
+            const response = await axios.get(`${API_URL}/api/quiz-results/${code}/leaderboard`);
             if (response.status !== 200) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -804,11 +782,7 @@ function SettingsContent({ currentUser }) {
         setIsLoading(true);
         setMessage('');
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
-            }
-            const response = await axios.post(`${apiUrl}/change-password`, {
+            const response = await axios.post(`${API_URL}/change-password`, {
                 ...formData,
                 username: currentUser.username,
                 userType: 'student',
@@ -836,11 +810,7 @@ function SettingsContent({ currentUser }) {
         setIsLoading(true);
         setMessage('');
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
-            }
-            const response = await axios.put(`${apiUrl}/api/students/${currentUser.id}`, {
+            const response = await axios.put(`${API_URL}/api/students/${currentUser.id}`, {
                 ...profileData
             });
 

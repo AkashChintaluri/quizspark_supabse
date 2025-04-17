@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './SignupForm.css';
 
+const API_URL = 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000';
+
 function SignupForm() {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
@@ -36,20 +38,20 @@ function SignupForm() {
         setErrorMessage('');
 
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
+            const response = await axios.post(`${API_URL}/signup`, {
+                ...formData,
+                userType: formData.userType.toLowerCase()
+            });
+
+            if (response.data.success) {
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+                setShowPopup(true);
+            } else {
+                setErrorMessage(response.data.message || 'Signup failed');
             }
-            const response = await axios.post(`${apiUrl}/signup`, formData);
-            setShowPopup(true);
-            console.log('Signup successful:', response.data);
         } catch (error) {
-            const errorMsg =
-                error.response?.data?.error === 'Registration failed' &&
-                error.response?.data?.details?.code === '23505'
-                    ? 'Username or email already exists.'
-                    : error.response?.data?.error || 'Registration failed. Please try again.';
-            setErrorMessage(errorMsg);
+            const serverError = error.response?.data?.error || error.message;
+            setErrorMessage(serverError || 'Signup failed. Please try again.');
             console.error('Signup error:', error);
         } finally {
             setIsLoading(false);

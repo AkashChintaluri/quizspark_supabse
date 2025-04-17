@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Login.css';
 
+const API_URL = 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000';
+
 function StudentLogin() {
     const navigate = useNavigate();
     const [formData, setFormData] = useState({ username: '', password: '' });
@@ -31,11 +33,7 @@ function StudentLogin() {
         setErrorMessage('');
 
         try {
-            const apiUrl = import.meta.env.VITE_API_URL;
-            if (!apiUrl) {
-                throw new Error('API URL is not defined in environment variables');
-            }
-            const response = await axios.post(`${apiUrl}/login`, {
+            const response = await axios.post(`${API_URL}/login`, {
                 ...formData,
                 userType: 'student',
             });

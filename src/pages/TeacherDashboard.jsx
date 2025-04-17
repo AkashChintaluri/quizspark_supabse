@@ -8,7 +8,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000';
 
 function TeacherDashboard() {
     const [activeTab, setActiveTab] = useState('home');
