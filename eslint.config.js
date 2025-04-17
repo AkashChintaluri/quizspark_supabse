@@ -3,6 +3,10 @@ import globals from 'globals'
 import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import tsParser from '@typescript-eslint/parser'
+import tsPlugin from '@typescript-eslint/eslint-plugin'
+import securityPlugin from 'eslint-plugin-security'
+import sonarjsPlugin from 'eslint-plugin-sonarjs'
 
 export default [
   { ignores: ['dist'] },
@@ -35,4 +39,44 @@ export default [
       ],
     },
   },
+  {
+    files: ['**/*.{js,jsx,ts,tsx}'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2021,
+        sourceType: 'module',
+        ecmaFeatures: {
+          jsx: true
+        }
+      }
+    },
+    plugins: {
+      '@typescript-eslint': tsPlugin,
+      'security': securityPlugin,
+      'sonarjs': sonarjsPlugin
+    },
+    rules: {
+      ...tsPlugin.configs.recommended.rules,
+      ...securityPlugin.configs.recommended.rules,
+      ...sonarjsPlugin.configs.recommended.rules,
+      'security/detect-object-injection': 'warn',
+      'security/detect-non-literal-require': 'warn',
+      'security/detect-non-literal-fs-filename': 'warn',
+      'security/detect-eval-with-expression': 'warn',
+      'security/detect-unsafe-regex': 'warn',
+      'security/detect-pseudoRandomBytes': 'warn',
+      'sonarjs/no-duplicate-string': 'warn',
+      'sonarjs/no-identical-functions': 'warn',
+      'sonarjs/no-small-switch': 'warn',
+      'sonarjs/no-unused-collection': 'warn',
+      'sonarjs/prefer-immediate-return': 'warn',
+      'sonarjs/prefer-object-literal': 'warn',
+      'sonarjs/no-collapsible-if': 'warn',
+      'sonarjs/no-redundant-boolean': 'warn',
+      'sonarjs/no-redundant-jump': 'warn',
+      'sonarjs/no-useless-catch': 'warn',
+      'sonarjs/prefer-single-boolean-return': 'warn'
+    }
+  }
 ]

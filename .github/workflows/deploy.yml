@@ -31,7 +31,7 @@ jobs:
 
     - name: Run ESLint with security checks
       run: |
-        npx eslint . --ext .js,.jsx,.ts,.tsx --config .eslintrc.json --resolve-plugins-relative-to .
+        npx eslint . --config .eslintrc.json
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
