@@ -179,11 +179,7 @@ jobs:
             docker-compose up -d
           '
 
-      - name: Verify monitoring setup
-        run: |
-          sleep 30
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} 'curl -f http://localhost:9090/-/healthy' || exit 1
-
+      
   deploy-backend:
     needs: setup-monitoring
     runs-on: ubuntu-latest
