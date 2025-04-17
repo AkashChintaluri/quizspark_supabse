@@ -8,7 +8,7 @@ import axios from 'axios';
 import './StudentDashboard.css';
 import './TakeQuiz.css';
 import TeacherList from './TeacherList';
-import { Bar } from 'react-chartjs-2';
+import { Line } from 'recharts';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
@@ -317,7 +317,7 @@ function TakeQuizContent({ currentUser }) {
             setShowQuizCodeInput(true);
             setQuizData(null);
         }
-    }, [urlQuizCode, currentUser?.id]);
+    }, [urlQuizCode, currentUser?.id, fetchQuiz]);
 
     const fetchQuiz = async (code) => {
         setError('');

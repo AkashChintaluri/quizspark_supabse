@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import './TeacherDashboard.css';
 import './MakeQuizzes.css';
-import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
@@ -33,6 +32,12 @@ function TeacherDashboard() {
             source.cancel('Component unmounted');
         };
     }, [navigate, location]);
+
+    useEffect(() => {
+        if (currentUser?.id) {
+            fetchDashboardData();
+        }
+    }, [currentUser?.id, fetchDashboardData]);
 
     return (
         <div className="teacher-dashboard">
