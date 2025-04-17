@@ -199,9 +199,12 @@ jobs:
         run: |
           sleep 60
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
-            # Check if containers are running
-            docker ps | grep prometheus
-            docker ps | grep node-exporter
+            # Fix dpkg error
+            sudo dpkg --configure -a
+            
+            # List all containers to see their names
+            echo "All running containers:"
+            docker ps -a
             
             # Check if ports are open using ss
             sudo apt-get update
@@ -209,9 +212,23 @@ jobs:
             sudo ss -tulpn | grep 9090
             sudo ss -tulpn | grep 9100
             
-            # Check service logs
-            docker logs prometheus
-            docker logs node-exporter
+            # Check service logs using the first container that matches the pattern
+            PROMETHEUS_CONTAINER=$(docker ps -a | grep prometheus | head -n 1 | awk "{print \$1}")
+            NODE_EXPORTER_CONTAINER=$(docker ps -a | grep node-exporter | head -n 1 | awk "{print \$1}")
+            
+            if [ ! -z "$PROMETHEUS_CONTAINER" ]; then
+              echo "Prometheus logs:"
+              docker logs $PROMETHEUS_CONTAINER
+            else
+              echo "No Prometheus container found"
+            fi
+            
+            if [ ! -z "$NODE_EXPORTER_CONTAINER" ]; then
+              echo "Node Exporter logs:"
+              docker logs $NODE_EXPORTER_CONTAINER
+            else
+              echo "No Node Exporter container found"
+            fi
           '
 
   deploy-backend:
