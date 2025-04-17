@@ -720,21 +720,20 @@ function ResultsContent({ currentUser, initialQuizCode }) {
         setAttempts([]);
         setFilteredAttempts([]);
         setQuizName('');
-        const source = axios.CancelToken.source();
 
         try {
-            const response = await axios.get(`${API_URL}/api/quiz-attempts/${code}`, {
-                cancelToken: source.token
-            });
-
-            setAttempts(response.data);
-            setFilteredAttempts(response.data);
-            setQuizName(response.data[0]?.quiz_name || 'Quiz Results');
-        } catch (err) {
-            if (!axios.isCancel(err)) {
-                console.error('Error fetching quiz attempts:', err);
-                setError(err.response?.data?.message || 'An error occurred while fetching results');
+            const response = await axios.get(`${API_URL}/api/quiz-attempts/${code}`);
+            
+            if (response.data && Array.isArray(response.data)) {
+                setAttempts(response.data);
+                setFilteredAttempts(response.data);
+                setQuizName(response.data[0]?.quiz_name || 'Quiz Results');
+            } else {
+                setError('No attempts found for this quiz');
             }
+        } catch (err) {
+            console.error('Error fetching quiz attempts:', err);
+            setError(err.response?.data?.message || 'An error occurred while fetching results');
         } finally {
             setLoading(false);
         }

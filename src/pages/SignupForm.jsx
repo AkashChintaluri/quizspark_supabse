@@ -123,7 +123,7 @@ function SignupForm() {
             </div>
             {showPopup && (
                 <div className="popup success">
-                    ✅ Account created successfully! Redirecting to login...
+                    ✔️ Account created successfully! Redirecting to login...
                 </div>
             )}
         </div>

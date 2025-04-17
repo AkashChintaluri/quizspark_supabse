@@ -57,14 +57,22 @@ function TeacherList() {
                 throw new Error('Invalid user data');
             }
 
-            await axios.post(`${API_URL}/api/subscribe`, {
+            const response = await axios.post(`${API_URL}/api/subscribe`, {
                 student_id: studentId,
                 teacher_id: teacherId
             });
-            fetchTeachers();
+
+            if (response.data.success) {
+                // Show success message
+                setError('');
+                // Refresh the teachers list
+                await fetchTeachers();
+            } else {
+                throw new Error('Subscription failed');
+            }
         } catch (err) {
             console.error('Error subscribing to teacher:', err);
-            setError(err.message || 'Failed to subscribe to teacher');
+            setError(err.response?.data?.error || err.message || 'Failed to subscribe to teacher');
         }
     };
 
