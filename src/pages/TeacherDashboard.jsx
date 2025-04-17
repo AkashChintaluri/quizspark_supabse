@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import './TeacherDashboard.css';
 import './MakeQuizzes.css';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
+import { Bar } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -14,6 +15,21 @@ function TeacherDashboard() {
     const [currentUser, setCurrentUser] = useState(null);
     const navigate = useNavigate();
     const location = useLocation();
+
+    const fetchDashboardData = useCallback(async () => {
+        if (!currentUser?.id) return;
+        
+        try {
+            const [quizzesResponse, studentsResponse] = await Promise.all([
+                axios.get(`${API_URL}/api/teachers/${currentUser.id}/quizzes`),
+                axios.get(`${API_URL}/api/teachers/${currentUser.id}/students`)
+            ]);
+            
+            // Handle the responses here
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        }
+    }, [currentUser?.id]);
 
     useEffect(() => {
         const source = axios.CancelToken.source();

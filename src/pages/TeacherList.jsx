@@ -1,55 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './TeacherList.css';
 
 const API_URL = 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000';
 
-function TeacherList({ studentId }) {
+function TeacherList() {
     const [teachers, setTeachers] = useState([]);
+    const [subscriptions, setSubscriptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [showDropdown, setShowDropdown] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [subscriptions, setSubscriptions] = useState(new Set());
 
-    useEffect(() => {
-        fetchTeachers();
-    }, [studentId]);
-
-    const fetchTeachers = async () => {
+    const fetchTeachers = useCallback(async () => {
+        setLoading(true);
+        setError('');
         try {
-            const [teachersRes, subsRes] = await Promise.all([
+            const studentId = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null;
+            if (!studentId) {
+                throw new Error('Student not authenticated');
+            }
+
+            const [teachersResponse, subscriptionsResponse] = await Promise.all([
                 axios.get(`${API_URL}/api/teachers`),
                 axios.get(`${API_URL}/api/subscriptions/${studentId}`)
             ]);
-            
-            if (Array.isArray(teachersRes.data)) {
-                setTeachers(teachersRes.data);
-            } else {
-                console.warn('Teachers response is not an array:', teachersRes.data);
-                setTeachers([]);
-                setError('Invalid teachers data received.');
-            }
 
-            if (Array.isArray(subsRes.data)) {
-                setSubscriptions(new Set(subsRes.data.map(sub => sub.id)));
-            } else {
-                console.warn('Subscriptions response is not an array:', subsRes.data);
-                setSubscriptions(new Set());
-                setError(subsRes.data?.error || 'Invalid subscriptions data received.');
-            }
+            setTeachers(teachersResponse.data);
+            setSubscriptions(subscriptionsResponse.data);
         } catch (err) {
-            console.error('Error fetching data:', err);
-            setError(err.response?.data?.error || 'Failed to fetch teacher data.');
+            setError(err.message || 'Failed to fetch teachers');
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        fetchTeachers();
+    }, [fetchTeachers]);
 
     const handleSubscribe = async (teacherId) => {
         try {
             await axios.post(`${API_URL}/api/subscribe`, {
-                student_id: studentId,
+                student_id: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null,
                 teacher_id: teacherId
             });
             fetchTeachers();
@@ -61,7 +54,7 @@ function TeacherList({ studentId }) {
     const handleUnsubscribe = async (teacherId) => {
         try {
             await axios.post(`${API_URL}/api/unsubscribe`, {
-                student_id: studentId,
+                student_id: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null,
                 teacher_id: teacherId
             });
             fetchTeachers();
@@ -70,8 +63,8 @@ function TeacherList({ studentId }) {
         }
     };
 
-    const subscribedTeachers = teachers.filter(teacher => subscriptions.has(teacher.id));
-    const unsubscribedTeachers = teachers.filter(teacher => !subscriptions.has(teacher.id));
+    const subscribedTeachers = teachers.filter(teacher => subscriptions.includes(teacher.id));
+    const unsubscribedTeachers = teachers.filter(teacher => !subscriptions.includes(teacher.id));
     const filteredUnsubscribedTeachers = unsubscribedTeachers.filter(teacher =>
         teacher.username.toLowerCase().includes(searchTerm.toLowerCase())
     );
