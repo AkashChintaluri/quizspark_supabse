@@ -27,7 +27,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        npm install --save-dev eslint@8.56.0 eslint-plugin-security eslint-plugin-sonarjs @typescript-eslint/parser @typescript-eslint/eslint-plugin
+        npm install --save-dev eslint@8.57.0 @typescript-eslint/parser@7.0.1 @typescript-eslint/eslint-plugin@7.0.1 eslint-plugin-security eslint-plugin-sonarjs --legacy-peer-deps
 
     - name: Run ESLint with security checks
       run: |
