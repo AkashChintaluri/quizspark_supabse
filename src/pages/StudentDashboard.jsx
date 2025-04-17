@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     useNavigate,
     useParams,
@@ -308,18 +308,7 @@ function TakeQuizContent({ currentUser }) {
     const { quizCode: urlQuizCode } = useParams();
     const navigate = useNavigate();
 
-    useEffect(() => {
-        if (urlQuizCode) {
-            setQuizCode(urlQuizCode);
-            setShowQuizCodeInput(false);
-            fetchQuiz(urlQuizCode);
-        } else {
-            setShowQuizCodeInput(true);
-            setQuizData(null);
-        }
-    }, [urlQuizCode, currentUser?.id, fetchQuiz]);
-
-    const fetchQuiz = async (code) => {
+    const fetchQuiz = useCallback(async (code) => {
         setError('');
         setLoading(true);
         try {
@@ -346,7 +335,18 @@ function TakeQuizContent({ currentUser }) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentUser?.id, navigate, urlQuizCode]);
+
+    useEffect(() => {
+        if (urlQuizCode) {
+            setQuizCode(urlQuizCode);
+            setShowQuizCodeInput(false);
+            fetchQuiz(urlQuizCode);
+        } else {
+            setShowQuizCodeInput(true);
+            setQuizData(null);
+        }
+    }, [urlQuizCode, fetchQuiz]);
 
     const handleQuizCodeSubmit = async (e) => {
         e.preventDefault();

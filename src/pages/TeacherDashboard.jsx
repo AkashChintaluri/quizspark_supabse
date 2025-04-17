@@ -20,11 +20,15 @@ function TeacherDashboard() {
         if (!currentUser?.id) return;
         
         try {
-            const [_quizzesResponse, _studentsResponse] = await Promise.all([
+            const [quizzesResponse, studentsResponse] = await Promise.all([
                 axios.get(`${API_URL}/api/teachers/${currentUser.id}/quizzes`),
                 axios.get(`${API_URL}/api/teachers/${currentUser.id}/students`)
             ]);
-            // Handle the responses here (using underscore to avoid unused var warning)
+            
+            // Store the responses in state if needed
+            // For example:
+            // setQuizzes(quizzesResponse.data);
+            // setStudents(studentsResponse.data);
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         }
@@ -695,8 +699,8 @@ function MakeQuizzesContent({ currentUser }) {
     );
 }
 
-function ResultsContent({ _currentUser, initialQuizCode }) {
-    const [_attempts, setAttempts] = useState([]);
+function ResultsContent({ currentUser, initialQuizCode }) {
+    const [attempts, setAttempts] = useState([]);
     const [filteredAttempts, setFilteredAttempts] = useState([]);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -719,13 +723,13 @@ function ResultsContent({ _currentUser, initialQuizCode }) {
         const source = axios.CancelToken.source();
 
         try {
-            const _response = await axios.get(`${API_URL}/api/quiz-attempts/${code}`, {
+            const response = await axios.get(`${API_URL}/api/quiz-attempts/${code}`, {
                 cancelToken: source.token
             });
 
-            setAttempts(_response.data);
-            setFilteredAttempts(_response.data);
-            setQuizName(_response.data[0]?.quiz_name || 'Quiz Results');
+            setAttempts(response.data);
+            setFilteredAttempts(response.data);
+            setQuizName(response.data[0]?.quiz_name || 'Quiz Results');
         } catch (err) {
             if (!axios.isCancel(err)) {
                 console.error('Error fetching quiz attempts:', err);

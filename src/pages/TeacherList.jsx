@@ -16,9 +16,14 @@ function TeacherList() {
         setLoading(true);
         setError('');
         try {
-            const studentId = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null;
-            if (!studentId) {
+            const storedUser = localStorage.getItem('user');
+            if (!storedUser) {
                 throw new Error('Student not authenticated');
+            }
+
+            const studentId = JSON.parse(storedUser)?.id;
+            if (!studentId) {
+                throw new Error('Invalid user data');
             }
 
             const [teachersResponse, subscriptionsResponse] = await Promise.all([
@@ -29,6 +34,7 @@ function TeacherList() {
             setTeachers(teachersResponse.data);
             setSubscriptions(subscriptionsResponse.data);
         } catch (err) {
+            console.error('Error fetching teachers:', err);
             setError(err.message || 'Failed to fetch teachers');
         } finally {
             setLoading(false);
@@ -41,25 +47,47 @@ function TeacherList() {
 
     const handleSubscribe = async (teacherId) => {
         try {
+            const storedUser = localStorage.getItem('user');
+            if (!storedUser) {
+                throw new Error('Student not authenticated');
+            }
+
+            const studentId = JSON.parse(storedUser)?.id;
+            if (!studentId) {
+                throw new Error('Invalid user data');
+            }
+
             await axios.post(`${API_URL}/api/subscribe`, {
-                student_id: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null,
+                student_id: studentId,
                 teacher_id: teacherId
             });
             fetchTeachers();
         } catch (err) {
-            setError('Failed to subscribe to teacher');
+            console.error('Error subscribing to teacher:', err);
+            setError(err.message || 'Failed to subscribe to teacher');
         }
     };
 
     const handleUnsubscribe = async (teacherId) => {
         try {
+            const storedUser = localStorage.getItem('user');
+            if (!storedUser) {
+                throw new Error('Student not authenticated');
+            }
+
+            const studentId = JSON.parse(storedUser)?.id;
+            if (!studentId) {
+                throw new Error('Invalid user data');
+            }
+
             await axios.post(`${API_URL}/api/unsubscribe`, {
-                student_id: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).id : null,
+                student_id: studentId,
                 teacher_id: teacherId
             });
             fetchTeachers();
         } catch (err) {
-            setError('Failed to unsubscribe from teacher');
+            console.error('Error unsubscribing from teacher:', err);
+            setError(err.message || 'Failed to unsubscribe from teacher');
         }
     };
 
