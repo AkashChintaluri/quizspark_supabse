@@ -55,6 +55,13 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
+
       - name: Create monitoring configs
         run: |
           # Create monitoring directory
@@ -129,7 +136,7 @@ jobs:
       - name: Deploy monitoring stack
         run: |
           # SSH into EC2 and setup monitoring
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
             # Install Docker Compose if not present
             sudo apt-get update
             sudo apt-get install -y docker-compose
@@ -164,8 +171,8 @@ jobs:
             EOL
 
             # Copy monitoring configs
-            scp monitoring/prometheus.yml ubuntu@${{ env.EC2_IP }}:~/monitoring/
-            scp monitoring/alert.rules ubuntu@${{ env.EC2_IP }}:~/monitoring/
+            scp -i ~/.ssh/id_ed25519 monitoring/prometheus.yml ubuntu@${{ env.EC2_IP }}:~/monitoring/
+            scp -i ~/.ssh/id_ed25519 monitoring/alert.rules ubuntu@${{ env.EC2_IP }}:~/monitoring/
 
             # Start monitoring stack
             cd ~/monitoring
@@ -175,7 +182,7 @@ jobs:
       - name: Verify monitoring setup
         run: |
           sleep 30
-          curl -f http://${{ env.EC2_IP }}:9090/-/healthy || exit 1
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} 'curl -f http://localhost:9090/-/healthy' || exit 1
 
   deploy-backend:
     needs: setup-monitoring
@@ -206,7 +213,7 @@ jobs:
 
       - name: Deploy to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
             docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             docker stop $(docker ps -q) || true
