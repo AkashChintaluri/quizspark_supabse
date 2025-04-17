@@ -19,6 +19,28 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: |
+        npm install --save-dev eslint eslint-plugin-security eslint-plugin-sonarjs @typescript-eslint/parser @typescript-eslint/eslint-plugin
+
+    - name: Run ESLint with security checks
+      run: |
+        npx eslint . --ext .js,.jsx,.ts,.tsx --config .eslintrc.json
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v2
+      with:
+        languages: javascript
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v2
+
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
@@ -28,12 +50,6 @@ jobs:
         exit-code: '1'
         ignore-unfixed: true
         severity: 'CRITICAL,HIGH'
-
-    - name: Run SonarQube analysis
-      uses: sonarsource/sonarqube-scan-action@master
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
   monitoring-setup:
     needs: security-scan
