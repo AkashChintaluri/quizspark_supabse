@@ -7,6 +7,7 @@ import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import securityPlugin from 'eslint-plugin-security'
 import sonarjsPlugin from 'eslint-plugin-sonarjs'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 
 export default [
   { 
@@ -15,7 +16,8 @@ export default [
       '**/dist/**',
       '**/build/**',
       '**/.next/**',
-      '**/coverage/**'
+      '**/coverage/**',
+      '**/.vite/**'
     ]
   },
   {
@@ -34,13 +36,17 @@ export default [
       react,
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
+      'jsx-a11y': jsxA11y
     },
     rules: {
       ...js.configs.recommended.rules,
       ...react.configs.recommended.rules,
       ...react.configs['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
       'react/jsx-no-target-blank': 'off',
+      'react/prop-types': 'off',
+      'react/no-unescaped-entities': 'off',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
@@ -68,6 +74,9 @@ export default [
       ...tsPlugin.configs.recommended.rules,
       ...securityPlugin.configs.recommended.rules,
       ...sonarjsPlugin.configs.recommended.rules,
+      '@typescript-eslint/no-unused-vars': 'warn',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-empty-function': 'warn',
       'security/detect-object-injection': 'warn',
       'security/detect-non-literal-require': 'warn',
       'security/detect-non-literal-fs-filename': 'warn',
@@ -90,7 +99,15 @@ export default [
       'sonarjs/cognitive-complexity': ['warn', 20],
       'sonarjs/no-nested-conditional': 'warn',
       'sonarjs/no-ignored-exceptions': 'warn',
-      'sonarjs/no-use-of-empty-return-value': 'warn'
+      'sonarjs/no-use-of-empty-return-value': 'warn',
+      'sonarjs/no-nested-functions': ['warn', 4],
+      'sonarjs/no-nested-template-literals': 'warn',
+      'sonarjs/no-clear-text-protocols': 'warn',
+      'sonarjs/pseudo-random': 'warn',
+      'sonarjs/no-dead-store': 'warn',
+      'sonarjs/no-unused-vars': 'warn',
+      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/rules-of-hooks': 'error'
     }
   }
 ]
