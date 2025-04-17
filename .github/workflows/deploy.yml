@@ -13,6 +13,197 @@ env:
   S3_BUCKET: "quizspark"
 
 jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        severity: 'CRITICAL,HIGH'
+
+    - name: Run SonarQube analysis
+      uses: sonarsource/sonarqube-scan-action@master
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  monitoring-setup:
+    needs: security-scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup monitoring infrastructure
+      run: |
+        # Create monitoring directory
+        mkdir -p monitoring
+        
+        # Create Prometheus config
+        cat > monitoring/prometheus.yml << EOF
+        global:
+          scrape_interval: 15s
+          evaluation_interval: 15s
+
+        scrape_configs:
+          - job_name: 'quizspark-backend'
+            static_configs:
+              - targets: ['${{ env.EC2_DNS }}:3000']
+          - job_name: 'node-exporter'
+            static_configs:
+              - targets: ['${{ env.EC2_DNS }}:9100']
+        EOF
+
+        # Create Grafana dashboard config
+        cat > monitoring/grafana-dashboard.json << EOF
+        {
+          "dashboard": {
+            "id": null,
+            "title": "QuizSpark Metrics",
+            "tags": ["quizspark"],
+            "timezone": "browser",
+            "panels": [
+              {
+                "title": "API Response Time",
+                "type": "graph",
+                "datasource": "Prometheus",
+                "targets": [
+                  {
+                    "expr": "rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        EOF
+
+        # Upload monitoring config to S3
+        aws s3 cp monitoring/prometheus.yml s3://${{ env.S3_BUCKET }}-monitoring/prometheus.yml
+        aws s3 cp monitoring/grafana-dashboard.json s3://${{ env.S3_BUCKET }}-monitoring/grafana-dashboard.json
+
+    - name: Deploy monitoring stack
+      run: |
+        # SSH into EC2 and setup monitoring
+        printf "%s\n" "${{ secrets.EC2_SSH_KEY }}" > key.pem
+        chmod 600 key.pem
+        
+        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ env.EC2_IP }} << EOF
+          # Install Docker Compose if not present
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+          # Create monitoring directory
+          mkdir -p ~/monitoring
+
+          # Create docker-compose.yml for monitoring stack
+          cat > ~/monitoring/docker-compose.yml << 'EOL'
+          version: '3'
+          services:
+            prometheus:
+              image: prom/prometheus:latest
+              ports:
+                - "9090:9090"
+              volumes:
+                - ./prometheus.yml:/etc/prometheus/prometheus.yml
+              command:
+                - '--config.file=/etc/prometheus/prometheus.yml'
+
+            grafana:
+              image: grafana/grafana:latest
+              ports:
+                - "3001:3000"
+              environment:
+                - GF_SECURITY_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+              volumes:
+                - grafana-storage:/var/lib/grafana
+
+            node-exporter:
+              image: prom/node-exporter:latest
+              ports:
+                - "9100:9100"
+
+            elasticsearch:
+              image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+              environment:
+                - discovery.type=single-node
+                - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+              ports:
+                - "9200:9200"
+              volumes:
+                - elasticsearch-data:/usr/share/elasticsearch/data
+
+            kibana:
+              image: docker.elastic.co/kibana/kibana:7.17.0
+              ports:
+                - "5601:5601"
+              environment:
+                - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+
+            logstash:
+              image: docker.elastic.co/logstash/logstash:7.17.0
+              volumes:
+                - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+              ports:
+                - "5000:5000"
+
+          volumes:
+            grafana-storage:
+            elasticsearch-data:
+          EOL
+
+          # Create Logstash config
+          cat > ~/monitoring/logstash.conf << 'EOL'
+          input {
+            tcp {
+              port => 5000
+              codec => json
+            }
+          }
+          output {
+            elasticsearch {
+              hosts => ["elasticsearch:9200"]
+              index => "quizspark-logs-%{+YYYY.MM.dd}"
+            }
+          }
+          EOL
+
+          # Download monitoring config from S3
+          aws s3 cp s3://${{ env.S3_BUCKET }}-monitoring/prometheus.yml ~/monitoring/prometheus.yml
+          aws s3 cp s3://${{ env.S3_BUCKET }}-monitoring/grafana-dashboard.json ~/monitoring/grafana-dashboard.json
+
+          # Start monitoring stack
+          cd ~/monitoring
+          docker-compose up -d
+
+          # Wait for services to start
+          sleep 30
+
+          # Import Grafana dashboard
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d @grafana-dashboard.json \
+            http://admin:${{ secrets.GRAFANA_ADMIN_PASSWORD }}@localhost:3001/api/dashboards/db
+        EOF
+
+        # Clean up
+        rm -f key.pem
+
   deploy-backend:
     runs-on: ubuntu-latest
     permissions:
