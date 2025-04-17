@@ -1,4 +1,4 @@
-name: Full Stack Deploy
+name: Deploy Application
 
 on:
   push:
@@ -7,395 +7,346 @@ on:
 
 env:
   AWS_REGION: ap-south-1
-  EC2_IP: "13.127.72.180"
-  EC2_DNS: "ec2-13-127-72-180.ap-south-1.compute.amazonaws.com"
-  ECR_REPOSITORY: "quizspark-backend"
-  S3_BUCKET: "quizspark"
+  EC2_IP: ec2-13-127-72-180.ap-south-1.compute.amazonaws.com
+  DNS: quizspark.s3-website.ap-south-1.amazonaws.com
+  ECR_REPOSITORY: quizspark
+  S3_BUCKET: quizspark
 
 jobs:
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        cache: 'npm'
-
-    - name: Install dependencies
-      run: |
-        npm install --save-dev eslint@8.57.0 @typescript-eslint/parser@7.0.1 @typescript-eslint/eslint-plugin@7.0.1 eslint-plugin-security eslint-plugin-sonarjs eslint-plugin-jsx-a11y eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-react-refresh --legacy-peer-deps
-
-    - name: Run ESLint with security checks
-      run: |
-        echo "Running ESLint on source files..."
-        npx eslint src/ --max-warnings=0 --debug
-        echo "ESLint check completed"
-
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
-      with:
-        languages: javascript
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
-
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        scan-ref: '.'
-        format: 'table'
-        exit-code: '1'
-        ignore-unfixed: true
-        severity: 'CRITICAL,HIGH'
-
-  monitoring-setup:
-    needs: security-scan
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Setup monitoring infrastructure
-      run: |
-        # Create monitoring directory
-        mkdir -p monitoring
-        
-        # Create Prometheus config
-        cat > monitoring/prometheus.yml << EOF
-        global:
-          scrape_interval: 15s
-          evaluation_interval: 15s
-
-        scrape_configs:
-          - job_name: 'quizspark-backend'
-            static_configs:
-              - targets: ['${{ env.EC2_DNS }}:3000']
-          - job_name: 'node-exporter'
-            static_configs:
-              - targets: ['${{ env.EC2_DNS }}:9100']
-        EOF
-
-        # Create Grafana dashboard config
-        cat > monitoring/grafana-dashboard.json << EOF
-        {
-          "dashboard": {
-            "id": null,
-            "title": "QuizSpark Metrics",
-            "tags": ["quizspark"],
-            "timezone": "browser",
-            "panels": [
-              {
-                "title": "API Response Time",
-                "type": "graph",
-                "datasource": "Prometheus",
-                "targets": [
-                  {
-                    "expr": "rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])"
-                  }
-                ]
-              }
-            ]
-          }
-        }
-        EOF
-
-        # Upload monitoring config to S3
-        aws s3 cp monitoring/prometheus.yml s3://${{ env.S3_BUCKET }}-monitoring/prometheus.yml
-        aws s3 cp monitoring/grafana-dashboard.json s3://${{ env.S3_BUCKET }}-monitoring/grafana-dashboard.json
-
-    - name: Deploy monitoring stack
-      run: |
-        # SSH into EC2 and setup monitoring
-        printf "%s\n" "${{ secrets.EC2_SSH_KEY }}" > key.pem
-        chmod 600 key.pem
-        
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ env.EC2_IP }} << EOF
-          # Install Docker Compose if not present
-          sudo apt-get update
-          sudo apt-get install -y docker-compose
-
-          # Create monitoring directory
-          mkdir -p ~/monitoring
-
-          # Create docker-compose.yml for monitoring stack
-          cat > ~/monitoring/docker-compose.yml << 'EOL'
-          version: '3'
-          services:
-            prometheus:
-              image: prom/prometheus:latest
-              ports:
-                - "9090:9090"
-              volumes:
-                - ./prometheus.yml:/etc/prometheus/prometheus.yml
-              command:
-                - '--config.file=/etc/prometheus/prometheus.yml'
-
-            grafana:
-              image: grafana/grafana:latest
-              ports:
-                - "3001:3000"
-              environment:
-                - GF_SECURITY_ADMIN_PASSWORD=${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-              volumes:
-                - grafana-storage:/var/lib/grafana
-
-            node-exporter:
-              image: prom/node-exporter:latest
-              ports:
-                - "9100:9100"
-
-            elasticsearch:
-              image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
-              environment:
-                - discovery.type=single-node
-                - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-              ports:
-                - "9200:9200"
-              volumes:
-                - elasticsearch-data:/usr/share/elasticsearch/data
-
-            kibana:
-              image: docker.elastic.co/kibana/kibana:7.17.0
-              ports:
-                - "5601:5601"
-              environment:
-                - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-
-            logstash:
-              image: docker.elastic.co/logstash/logstash:7.17.0
-              volumes:
-                - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
-              ports:
-                - "5000:5000"
-
-          volumes:
-            grafana-storage:
-            elasticsearch-data:
-          EOL
-
-          # Create Logstash config
-          cat > ~/monitoring/logstash.conf << 'EOL'
-          input {
-            tcp {
-              port => 5000
-              codec => json
-            }
-          }
-          output {
-            elasticsearch {
-              hosts => ["elasticsearch:9200"]
-              index => "quizspark-logs-%{+YYYY.MM.dd}"
-            }
-          }
-          EOL
-
-          # Download monitoring config from S3
-          aws s3 cp s3://${{ env.S3_BUCKET }}-monitoring/prometheus.yml ~/monitoring/prometheus.yml
-          aws s3 cp s3://${{ env.S3_BUCKET }}-monitoring/grafana-dashboard.json ~/monitoring/grafana-dashboard.json
-
-          # Start monitoring stack
-          cd ~/monitoring
-          docker-compose up -d
-
-          # Wait for services to start
-          sleep 30
-
-          # Import Grafana dashboard
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -d @grafana-dashboard.json \
-            http://admin:${{ secrets.GRAFANA_ADMIN_PASSWORD }}@localhost:3001/api/dashboards/db
-        EOF
-
-        # Clean up
-        rm -f key.pem
-
-  deploy-backend:
+  codeql-analysis:
+    name: CodeQL Analysis
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      actions: read
       contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript' ]
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+        languages: ${{ matrix.language }}
 
-    - name: Login to Amazon ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
 
-    - name: Build, tag, and push image to Amazon ECR
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
 
-    - name: Deploy to EC2
-      run: |
-        # Create SSH key from secret
-        printf "%s\n" "${{ secrets.EC2_SSH_KEY }}" > key.pem
-        chmod 600 key.pem
-        if [ ! -s key.pem ]; then
-          echo "Error: SSH key file is empty or not created"
-          exit 1
-        fi
+  setup-monitoring:
+    needs: codeql-analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-        # SSH into EC2 and run deployment commands
-        ssh -o StrictHostKeyChecking=no -i key.pem ubuntu@${{ env.EC2_IP }} << EOF
-          # Login to ECR
-          aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
-          
-          # Stop and remove existing container
-          docker stop quizspark-backend || true
-          docker rm quizspark-backend || true
-          
-          # Remove existing image
-          docker rmi quizspark-backend || true
-          
-          # Pull and run new image
-          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          docker run -d \
-            --name quizspark-backend \
-            --restart unless-stopped \
-            -p 3000:3000 \
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          
-          # Wait for container to start
-          sleep 10
-          
-          # Verify container is running
-          if ! docker ps | grep -q quizspark-backend; then
-            echo "Error: Container failed to start"
-            docker logs quizspark-backend
-            exit 1
-          fi
-          
-          # Check container logs
-          echo "Container logs:"
-          docker logs quizspark-backend
-        EOF
-        
-        # Clean up local files
-        rm -f key.pem
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-    - name: Verify Backend Deployment
-      run: |
-        sleep 10
-        response=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.EC2_DNS }}:3000/api/upcoming-quizzes/1)
-        if [ "$response" != "200" ]; then
-          echo "Error: Backend is not responding correctly"
-          exit 1
-        fi
+      - name: Create monitoring configs
+        run: |
+          # Create monitoring directory
+          mkdir -p monitoring
 
-    - name: Output Backend URL
-      run: |
-        echo "Backend deployed at: http://${{ env.EC2_DNS }}:3000"
+          # Create Prometheus config
+          cat > monitoring/prometheus.yml << EOF
+          global:
+            scrape_interval: 15s
+            evaluation_interval: 15s
+            retention: 15d
+
+          scrape_configs:
+            - job_name: 'quizspark-backend'
+              static_configs:
+                - targets: ['${{ env.EC2_IP }}:3000']
+              metrics_path: '/metrics'
+              scrape_interval: 10s
+
+            - job_name: 'node-exporter'
+              static_configs:
+                - targets: ['${{ env.EC2_IP }}:9100']
+              scrape_interval: 15s
+
+            - job_name: 'prometheus'
+              static_configs:
+                - targets: ['localhost:9090']
+              scrape_interval: 15s
+
+          rule_files:
+            - 'alert.rules'
+
+          alerting:
+            alertmanagers:
+              - static_configs:
+                  - targets: ['localhost:9093']
+          EOF
+
+          # Create alert rules
+          cat > monitoring/alert.rules << EOF
+          groups:
+            - name: quizspark
+              rules:
+                - alert: HighCPUUsage
+                  expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode='idle'}[5m])) * 100) > 80
+                  for: 5m
+                  labels:
+                    severity: warning
+                  annotations:
+                    summary: High CPU usage detected
+                    description: CPU usage is above 80% for 5 minutes
+
+                - alert: HighMemoryUsage
+                  expr: 100 * (1 - ((node_memory_MemAvailable_bytes or node_memory_Buffers_bytes + node_memory_Cached_bytes + node_memory_MemFree_bytes) / node_memory_MemTotal_bytes)) > 85
+                  for: 5m
+                  labels:
+                    severity: warning
+                  annotations:
+                    summary: High memory usage detected
+                    description: Memory usage is above 85% for 5 minutes
+
+                - alert: HighErrorRate
+                  expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+                  for: 5m
+                  labels:
+                    severity: critical
+                  annotations:
+                    summary: High error rate detected
+                    description: Error rate is above 5% for 5 minutes
+          EOF
+
+      - name: Deploy monitoring stack
+        run: |
+          # SSH into EC2 and setup monitoring
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
+            # Install Docker Compose if not present
+            sudo apt-get update
+            sudo apt-get install -y docker-compose
+
+            # Create monitoring directory
+            mkdir -p ~/monitoring
+
+            # Create docker-compose.yml for monitoring stack
+            cat > ~/monitoring/docker-compose.yml << "EOL"
+            version: "3"
+            services:
+              prometheus:
+                image: prom/prometheus:latest
+                ports:
+                  - "9090:9090"
+                volumes:
+                  - ./prometheus.yml:/etc/prometheus/prometheus.yml
+                  - ./alert.rules:/etc/prometheus/alert.rules
+                  - prometheus-data:/prometheus
+                command:
+                  - "--config.file=/etc/prometheus/prometheus.yml"
+                  - "--storage.tsdb.path=/prometheus"
+                  - "--storage.tsdb.retention.time=15d"
+
+              node-exporter:
+                image: prom/node-exporter:latest
+                ports:
+                  - "9100:9100"
+
+            volumes:
+              prometheus-data:
+            EOL
+
+            # Copy monitoring configs
+            scp monitoring/prometheus.yml ubuntu@${{ env.EC2_IP }}:~/monitoring/
+            scp monitoring/alert.rules ubuntu@${{ env.EC2_IP }}:~/monitoring/
+
+            # Start monitoring stack
+            cd ~/monitoring
+            docker-compose up -d
+          '
+
+      - name: Verify monitoring setup
+        run: |
+          sleep 30
+          curl -f http://${{ env.EC2_IP }}:9090/-/healthy || exit 1
+
+  deploy-backend:
+    needs: setup-monitoring
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy to EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            docker stop $(docker ps -q) || true
+            docker rm $(docker ps -a -q) || true
+            docker run -d -p 3000:3000 ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          '
+
+      - name: Verify backend deployment
+        run: |
+          sleep 30
+          curl -f http://${{ env.EC2_IP }}:3000/health || exit 1
 
   deploy-frontend:
     needs: deploy-backend
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm install
 
-    - name: Build frontend
-      run: npm run build
+      - name: Build frontend
+        run: npm run build
 
-    - name: Configure S3 bucket
-      run: |
-        # Enable static website hosting
-        aws s3api put-bucket-website \
-          --bucket ${{ env.S3_BUCKET }} \
-          --website-configuration '{
-            "IndexDocument": {"Suffix": "index.html"},
-            "ErrorDocument": {"Key": "index.html"}
-          }'
+      - name: Configure S3 bucket
+        run: |
+          aws s3api put-bucket-website \
+            --bucket ${{ env.S3_BUCKET }} \
+            --website-configuration '{"IndexDocument": {"Suffix": "index.html"}, "ErrorDocument": {"Key": "index.html"}}'
 
-        # Set bucket policy for public access
-        aws s3api put-bucket-policy \
-          --bucket ${{ env.S3_BUCKET }} \
-          --policy '{
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Sid": "PublicReadGetObject",
-                "Effect": "Allow",
-                "Principal": "*",
-                "Action": "s3:GetObject",
-                "Resource": "arn:aws:s3:::'${{ env.S3_BUCKET }}'/*"
-              }
-            ]
-          }'
+          aws s3api put-bucket-cors \
+            --bucket ${{ env.S3_BUCKET }} \
+            --cors-configuration '{"CORSRules": [{"AllowedHeaders": ["*"], "AllowedMethods": ["GET", "HEAD"], "AllowedOrigins": ["*"], "ExposeHeaders": []}]}'
 
-        # Configure CORS
-        aws s3api put-bucket-cors \
-          --bucket ${{ env.S3_BUCKET }} \
-          --cors-configuration '{
-            "CORSRules": [
-              {
-                "AllowedHeaders": ["*"],
-                "AllowedMethods": ["GET", "HEAD"],
-                "AllowedOrigins": ["*"],
-                "ExposeHeaders": []
-              }
-            ]
-          }'
+      - name: Upload to S3
+        run: |
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "text/html; charset=utf-8" \
+            --cache-control "no-cache" \
+            --exclude "*.js" \
+            --exclude "*.css" \
+            --exclude "*.json" \
+            --exclude "*.svg" \
+            --exclude "*.png" \
+            --exclude "*.jpg" \
+            --exclude "*.jpeg" \
+            --exclude "*.gif" \
+            --exclude "*.ico" \
+            --exclude "*.woff" \
+            --exclude "*.woff2" \
+            --exclude "*.ttf" \
+            --exclude "*.eot"
 
-    - name: Upload to S3
-      run: |
-        # Upload all files from dist directory
-        aws s3 sync dist/ s3://${{ env.S3_BUCKET }}/
-        
-        # Set proper content types
-        aws s3 cp s3://${{ env.S3_BUCKET }}/index.html s3://${{ env.S3_BUCKET }}/index.html --content-type "text/html" --cache-control "no-cache"
-        aws s3 cp s3://${{ env.S3_BUCKET }}/assets/ s3://${{ env.S3_BUCKET }}/assets/ --recursive --content-type "application/javascript" --cache-control "public, max-age=31536000"
-        aws s3 cp s3://${{ env.S3_BUCKET }}/assets/ s3://${{ env.S3_BUCKET }}/assets/ --recursive --exclude "*" --include "*.css" --content-type "text/css" --cache-control "public, max-age=31536000"
-        aws s3 cp s3://${{ env.S3_BUCKET }}/assets/ s3://${{ env.S3_BUCKET }}/assets/ --recursive --exclude "*" --include "*.png" --include "*.jpg" --include "*.jpeg" --include "*.gif" --include "*.svg" --content-type "image/*" --cache-control "public, max-age=31536000"
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "application/javascript" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.js"
 
-    - name: Output Frontend URL
-      run: |
-        echo "Frontend deployed at: http://${{ env.S3_BUCKET }}.s3-website.${{ env.AWS_REGION }}.amazonaws.com"
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "text/css" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.css"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "application/json" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.json"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "image/svg+xml" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.svg"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "image/png" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.png"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "image/jpeg" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.jpg" \
+            --include "*.jpeg"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "image/gif" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.gif"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "image/x-icon" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.ico"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "font/woff" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.woff"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "font/woff2" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.woff2"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "font/ttf" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.ttf"
+
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
+            --content-type "application/vnd.ms-fontobject" \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*" \
+            --include "*.eot"
+
+      - name: Output frontend URL
+        run: echo "Frontend deployed to http://${{ env.DNS }}"
 
         
