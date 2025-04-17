@@ -197,19 +197,21 @@ jobs:
 
       - name: Verify monitoring setup
         run: |
-          sleep 30
+          sleep 60
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
             # Check if containers are running
             docker ps | grep prometheus
             docker ps | grep node-exporter
             
-            # Check if ports are open
-            sudo netstat -tulpn | grep 9090
-            sudo netstat -tulpn | grep 9100
+            # Check if ports are open using ss
+            sudo apt-get update
+            sudo apt-get install -y iproute2
+            sudo ss -tulpn | grep 9090
+            sudo ss -tulpn | grep 9100
             
             # Check service logs
-            docker logs monitoring-prometheus-1
-            docker logs monitoring-node-exporter-1
+            docker logs prometheus
+            docker logs node-exporter
           '
 
   deploy-backend:
