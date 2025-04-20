@@ -28,7 +28,7 @@ function TeacherList() {
 
             const [teachersResponse, subscriptionsResponse] = await Promise.all([
                 axios.get(`${API_URL}/api/teachers`),
-                axios.get(`${API_URL}/api/subscriptions/${studentId}`)
+                axios.get(`${API_URL}/api/subscriptions/${studentId}`),
             ]);
 
             setTeachers(teachersResponse.data);
@@ -57,18 +57,28 @@ function TeacherList() {
                 throw new Error('Invalid user data');
             }
 
-            const response = await axios.post(`${API_URL}/api/subscribe`, {
-                student_id: studentId,
-                teacher_id: teacherId
-            });
+            if (!teacherId) {
+                throw new Error('Invalid teacher ID');
+            }
+
+            const response = await axios.post(
+                `${API_URL}/api/subscribe`,
+                {
+                    student_id: studentId,
+                    teacher_id: teacherId,
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
 
             if (response.data.success) {
-                // Show success message
                 setError('');
-                // Refresh the teachers list
                 await fetchTeachers();
             } else {
-                throw new Error('Subscription failed');
+                throw new Error(response.data.error || 'Subscription failed');
             }
         } catch (err) {
             console.error('Error subscribing to teacher:', err);
@@ -90,7 +100,7 @@ function TeacherList() {
 
             await axios.post(`${API_URL}/api/unsubscribe`, {
                 student_id: studentId,
-                teacher_id: teacherId
+                teacher_id: teacherId,
             });
             fetchTeachers();
         } catch (err) {
@@ -99,18 +109,30 @@ function TeacherList() {
         }
     };
 
-    const subscribedTeachers = teachers.filter(teacher => subscriptions.includes(teacher.id));
-    const unsubscribedTeachers = teachers.filter(teacher => !subscriptions.includes(teacher.id));
-    const filteredUnsubscribedTeachers = unsubscribedTeachers.filter(teacher =>
+    const subscribedTeachers = teachers.filter((teacher) =>
+        subscriptions.some((sub) => sub.id === teacher.id)
+    );
+    const unsubscribedTeachers = teachers.filter(
+        (teacher) => !subscriptions.some((sub) => sub.id === teacher.id)
+    );
+    const filteredUnsubscribedTeachers = unsubscribedTeachers.filter((teacher) =>
         teacher.username.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     if (loading) {
-        return <div className="teacher-list"><div className="loading">Loading teachers...</div></div>;
+        return (
+            <div className="teacher-list">
+                <div className="loading">Loading teachers...</div>
+            </div>
+        );
     }
 
     if (error) {
-        return <div className="teacher-list"><div className="error-message">{error}</div></div>;
+        return (
+            <div className="teacher-list">
+                <div className="error-message">{error}</div>
+            </div>
+        );
     }
 
     return (

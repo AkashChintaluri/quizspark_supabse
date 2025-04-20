@@ -1,0 +1,21 @@
+   Jobs:
+   1. codeql-analysis:
+      - JavaScript code analysis
+      - Security scanning
+      - Runs on ubuntu-latest
+
+   2. setup-monitoring:
+      - Sets up Prometheus and Node Exporter
+      - Configures monitoring stack
+      - Runs on ubuntu-latest
+
+   3. deploy-backend:
+      - Builds and pushes Docker image to ECR
+      - Deploys to EC2
+      - Runs on ubuntu-latest
+
+   4. deploy-frontend:
+      - Builds React application
+      - Deploys to S3
+      - Configures S3 website hosting
+      - Runs on ubuntu-latest

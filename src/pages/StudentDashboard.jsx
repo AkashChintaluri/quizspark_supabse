@@ -15,7 +15,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 const API_URL = 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000';
 
-function StudentDashboard() {
+    function StudentDashboard() {
     const [activeTab, setActiveTab] = useState('home');
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);

@@ -1,0 +1,24 @@
+Frontend:
+	React application
+	Hosted on AWS S3
+	Accessible at: http://quizspark.s3-website.ap-south-1.amazonaws.com
+
+Backend:
+	Node.js/Express server
+	Running on AWS EC2
+	IP: 13.127.72.180
+	Port: 3000
+
+Database:
+	Supabase
+	URL: https://hntrpejpiboxnlbzrbbc.supabase.co
+
+Deployment Flow:
+	   GitHub Push → GitHub Actions → 
+   		├── Build Backend → Docker → ECR → EC2
+   		└── Build Frontend → S3 Bucket
+
+Monitoring:
+	Prometheus (port 9090)
+	Node Exporter (port 9100)
+	Both running on EC2

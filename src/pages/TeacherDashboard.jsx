@@ -706,10 +706,11 @@ function ResultsContent({ currentUser, initialQuizCode }) {
     const [loading, setLoading] = useState(false);
     const [quizName, setQuizName] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: 'score', direction: 'desc' });
-    const quizCode = initialQuizCode || '';
+    const [quizCode, setQuizCode] = useState(initialQuizCode || '');
 
     useEffect(() => {
         if (initialQuizCode) {
+            setQuizCode(initialQuizCode);
             fetchResults(initialQuizCode);
         }
     }, [initialQuizCode]);
@@ -723,8 +724,8 @@ function ResultsContent({ currentUser, initialQuizCode }) {
 
         try {
             const response = await axios.get(`${API_URL}/api/quiz-attempts/${code}`);
-            
-            if (response.data && Array.isArray(response.data)) {
+
+            if (Array.isArray(response.data)) {
                 setAttempts(response.data);
                 setFilteredAttempts(response.data);
                 setQuizName(response.data[0]?.quiz_name || 'Quiz Results');
@@ -770,9 +771,9 @@ function ResultsContent({ currentUser, initialQuizCode }) {
     };
 
     const exportToCSV = () => {
-        const headers = ['Student,Quiz Name,Score,Total Questions,Correct Answers,Attempt Date,Time Taken (s),Quiz Code,Student ID,Attempt ID'];
+        const headers = ['Student,Quiz Name,Score,Total Questions,Attempt Date,Quiz Code,Student ID,Attempt ID'];
         const rows = filteredAttempts.map(a =>
-            `${a.student_username},${quizName},${a.score},${a.total_questions},${a.correct_answers || 'N/A'},${new Date(a.attempt_date).toLocaleString()},${a.time_taken || 'N/A'},${a.quiz_code},${a.student_id},${a.attempt_id}`
+            `${a.student_username},${quizName},${a.score},${a.total_questions},${new Date(a.attempt_date).toLocaleString()},${quizCode},${a.user_id},${a.attempt_id}`
         );
         const csvContent = [headers, ...rows].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -829,7 +830,7 @@ function ResultsContent({ currentUser, initialQuizCode }) {
                                 type="text"
                                 placeholder="Enter Quiz Code"
                                 value={quizCode}
-                                onChange={(e) => fetchResults(e.target.value)}
+                                onChange={(e) => setQuizCode(e.target.value)}
                                 className="quiz-code-input-alt"
                                 disabled={loading}
                             />
@@ -916,19 +917,19 @@ function ResultsContent({ currentUser, initialQuizCode }) {
                             </div>
                             <div className="attempts-table-alt">
                                 <div className="table-header-alt">
-                                    <div 
+                                    <div
                                         className={`table-cell-alt ${sortConfig.key === 'student_username' ? `active ${sortConfig.direction}-sort` : ''}`}
                                         onClick={() => handleSort('student_username')}
                                     >
                                         Student
                                     </div>
-                                    <div 
+                                    <div
                                         className={`table-cell-alt ${sortConfig.key === 'score' ? `active ${sortConfig.direction}-sort` : ''}`}
                                         onClick={() => handleSort('score')}
                                     >
                                         Score
                                     </div>
-                                    <div 
+                                    <div
                                         className={`table-cell-alt ${sortConfig.key === 'attempt_date' ? `active ${sortConfig.direction}-sort` : ''}`}
                                         onClick={() => handleSort('attempt_date')}
                                     >

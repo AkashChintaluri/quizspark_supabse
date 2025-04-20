@@ -533,19 +533,23 @@ function startServer() {
         const { student_id, teacher_id } = req.body;
 
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('subscriptions')
                 .insert({ student_id, teacher_id })
-                .select();
+                .select()
+                .single();
 
-            if (error && error.code !== '23505') {
+            if (error) {
+                if (error.code === '23505') {
+                    return res.status(200).json({ success: true, message: 'Already subscribed' });
+                }
                 throw error;
             }
 
-            res.json({ success: true });
+            res.json({ success: true, subscription: data });
         } catch (error) {
             console.error('Subscription error:', error);
-            res.status(500).json({ error: 'Subscription failed' });
+            res.status(500).json({ error: 'Subscription failed', details: error.message });
         }
     });
 
@@ -710,30 +714,43 @@ function startServer() {
         const { quiz_code } = req.params;
 
         try {
+            // Verify quiz exists
+            const { data: quiz, error: quizError } = await supabase
+                .from('quizzes')
+                .select('quiz_id, quiz_name')
+                .eq('quiz_code', quiz_code)
+                .single();
+
+            if (quizError || !quiz) {
+                return res.status(404).json({ message: 'Quiz not found' });
+            }
+
             const { data, error } = await supabase
                 .from('quiz_attempts')
                 .select(`
-                    attempt_id,
-                    user_id,
-                    score,
-                    total_questions,
-                    attempt_date,
-                    student_login (
-                        username
-                    ),
-                    quizzes (
-                        quiz_name
-                    ),
-                    retest_requests (
-                        request_id,
-                        status
-                    )
-                `)
-                .eq('quizzes.quiz_code', quiz_code)
+                attempt_id,
+                user_id,
+                score,
+                total_questions,
+                attempt_date,
+                student_login (
+                    username
+                ),
+                quizzes (
+                    quiz_name
+                ),
+                retest_requests (
+                    request_id,
+                    status
+                )
+            `)
+                .eq('quiz_id', quiz.quiz_id)
                 .order('attempt_date', { ascending: false });
 
-            if (error || !data.length) {
-                return res.status(404).json({ message: 'No attempts found for this quiz' });
+            if (error) throw error;
+
+            if (!data.length) {
+                return res.status(200).json([]);
             }
 
             res.json(
@@ -744,7 +761,7 @@ function startServer() {
                     score: row.score,
                     total_questions: row.total_questions,
                     attempt_date: row.attempt_date,
-                    quiz_name: row.quizzes?.quiz_name || 'Unknown Quiz',
+                    quiz_name: row.quizzes?.quiz_name || quiz.quiz_name,
                     request_id: row.retest_requests?.request_id,
                     retest_status: row.retest_requests?.status,
                 }))
