@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './TeacherList.css';
 
-const API_URL = 'http://ec2-13-127-72-180.ap-south-1.compute.amazonaws.com:3000';
+const API_URL = 'http://ec2-15-207-222-129.ap-south-1.compute.amazonaws.com:3000';
 
 function TeacherList() {
     const [teachers, setTeachers] = useState([]);

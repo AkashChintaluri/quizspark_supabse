@@ -6,7 +6,7 @@ Frontend:
 Backend:
 	Node.js/Express server
 	Running on AWS EC2
-	IP: 13.127.72.180
+	IP: 15.207.222.129
 	Port: 3000
 
 Database:
