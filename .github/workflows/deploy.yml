@@ -7,8 +7,8 @@ on:
 
 env:
   AWS_REGION: ap-south-1
-  EC2_IP: ec2-15-207-222-129.ap-south-1.compute.amazonaws.com
-  EC2_IP_NUMERIC: 15.207.222.129
+  EC2_IP: ec2-52-66-248-47.ap-south-1.compute.amazonaws.com
+  EC2_IP_NUMERIC: 52.66.248.47
   DNS: quizspark.s3-website.ap-south-1.amazonaws.com
   ECR_REPOSITORY: quizspark
   S3_BUCKET: quizspark

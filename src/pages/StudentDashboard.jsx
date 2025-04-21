@@ -13,7 +13,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const API_URL = 'http://ec2-15-207-222-129.ap-south-1.compute.amazonaws.com:3000';
+const API_URL = 'http://ec2-52-66-248-47.ap-south-1.compute.amazonaws.com:3000';
 
     function StudentDashboard() {
     const [activeTab, setActiveTab] = useState('home');

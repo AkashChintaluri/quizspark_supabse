@@ -16,24 +16,6 @@ function TeacherDashboard() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    const fetchDashboardData = useCallback(async () => {
-        if (!currentUser?.id) return;
-        
-        try {
-            const [quizzesResponse, studentsResponse] = await Promise.all([
-                axios.get(`${API_URL}/api/teachers/${currentUser.id}/quizzes`),
-                axios.get(`${API_URL}/api/teachers/${currentUser.id}/students`)
-            ]);
-            
-            // Store the responses in state if needed
-            // For example:
-            // setQuizzes(quizzesResponse.data);
-            // setStudents(studentsResponse.data);
-        } catch (error) {
-            console.error('Error fetching dashboard data:', error);
-        }
-    }, [currentUser?.id]);
-
     useEffect(() => {
         const source = axios.CancelToken.source();
         const storedUser = localStorage.getItem('user');
@@ -51,13 +33,6 @@ function TeacherDashboard() {
             source.cancel('Component unmounted');
         };
     }, [navigate, location]);
-
-    useEffect(() => {
-        if (currentUser?.id) {
-            fetchDashboardData();
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentUser?.id]); // Suppress exhaustive-deps warning since fetchDashboardData is stable
 
     return (
         <div className="teacher-dashboard">
