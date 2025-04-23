@@ -171,16 +171,13 @@ function startServer() {
         const { quiz_name, quiz_code, created_by, questions, due_date } = req.body;
 
         try {
-            // Handle both nested and non-nested question structures
-            const questionsData = Array.isArray(questions) ? { questions } : questions;
-
             const { data, error } = await supabase
                 .from('quizzes')
                 .insert({
                     quiz_name,
                     quiz_code,
                     created_by,
-                    questions: questionsData,
+                    questions: questions,
                     due_date,
                 })
                 .select('quiz_id')
