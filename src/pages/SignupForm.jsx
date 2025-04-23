@@ -164,7 +164,7 @@ function SignupForm() {
             {showBlockedPopup && (
                 <div className="popup error">
                     <FaUser className="icon" />
-                    Teacher signup is blocked. Email must contain "teach"
+                    Teacher signup is blocked.
                 </div>
             )}
         </div>
