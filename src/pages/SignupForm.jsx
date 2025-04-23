@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { FaUser, FaEnvelope, FaLock, FaUserGraduate, FaChalkboardTeacher } from 'react-icons/fa';
 import './SignupForm.css';
 
 const API_URL = 'http://ec2-52-66-255-90.ap-south-1.compute.amazonaws.com:3000';
@@ -46,6 +47,9 @@ function SignupForm() {
             if (response.data.success) {
                 localStorage.setItem('user', JSON.stringify(response.data.user));
                 setShowPopup(true);
+                setTimeout(() => {
+                    navigate(formData.userType === 'student' ? '/student-dashboard' : '/teacher-dashboard');
+                }, 1500);
             } else {
                 setErrorMessage(response.data.message || 'Signup failed');
             }
@@ -64,52 +68,65 @@ function SignupForm() {
                 <h2>Join QuizSpark</h2>
                 <form className="signup-form" onSubmit={handleSubmit}>
                     <div className="form-group">
-                        <input
-                            type="text"
-                            id="username"
-                            value={formData.username}
-                            onChange={handleInputChange}
-                            required
-                            placeholder="Username"
-                            autoComplete="username"
-                            disabled={isLoading}
-                        />
+                        <div className="input-wrapper">
+                            <span className="icon"><FaUser /></span>
+                            <input
+                                type="text"
+                                id="username"
+                                value={formData.username}
+                                onChange={handleInputChange}
+                                required
+                                placeholder="Username"
+                                autoComplete="username"
+                                disabled={isLoading}
+                            />
+                        </div>
                     </div>
                     <div className="form-group">
-                        <input
-                            type="email"
-                            id="email"
-                            value={formData.email}
-                            onChange={handleInputChange}
-                            required
-                            placeholder="Email"
-                            autoComplete="email"
-                            disabled={isLoading}
-                        />
+                        <div className="input-wrapper">
+                            <span className="icon"><FaEnvelope /></span>
+                            <input
+                                type="email"
+                                id="email"
+                                value={formData.email}
+                                onChange={handleInputChange}
+                                required
+                                placeholder="Email"
+                                autoComplete="email"
+                                disabled={isLoading}
+                            />
+                        </div>
                     </div>
                     <div className="form-group">
-                        <input
-                            type="password"
-                            id="password"
-                            value={formData.password}
-                            onChange={handleInputChange}
-                            required
-                            placeholder="Password"
-                            autoComplete="new-password"
-                            disabled={isLoading}
-                        />
+                        <div className="input-wrapper">
+                            <span className="icon"><FaLock /></span>
+                            <input
+                                type="password"
+                                id="password"
+                                value={formData.password}
+                                onChange={handleInputChange}
+                                required
+                                placeholder="Password"
+                                autoComplete="new-password"
+                                disabled={isLoading}
+                            />
+                        </div>
                     </div>
                     <div className="form-group select-group">
-                        <select
-                            id="userType"
-                            value={formData.userType}
-                            onChange={handleInputChange}
-                            disabled={isLoading}
-                        >
-                            <option value="student">Student</option>
-                            <option value="teacher">Teacher</option>
-                        </select>
-                        <span className="select-placeholder">I am a</span>
+                        <div className="input-wrapper">
+                            <span className="icon">
+                                {formData.userType === 'student' ? <FaUserGraduate /> : <FaChalkboardTeacher />}
+                            </span>
+                            <select
+                                id="userType"
+                                value={formData.userType}
+                                onChange={handleInputChange}
+                                disabled={isLoading}
+                            >
+                                <option value="student">Student</option>
+                                <option value="teacher">Teacher</option>
+                            </select>
+                        </div>
                     </div>
                     {errorMessage && <div className="error-message">{errorMessage}</div>}
                     <button
@@ -123,7 +140,7 @@ function SignupForm() {
             </div>
             {showPopup && (
                 <div className="popup success">
-                    ✔️ Account created successfully! Redirecting to login...
+                    ✔️ Account created successfully! Redirecting to dashboard...
                 </div>
             )}
         </div>

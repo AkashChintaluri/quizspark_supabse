@@ -40,18 +40,21 @@ function startServer() {
             const { data, error } = await supabase
                 .from(table)
                 .insert({ username, email, password })
-                .select('id')
+                .select('id, username, email')
                 .single();
 
             if (error) throw error;
 
             res.status(201).json({
-                message: 'User registered successfully',
-                userId: data.id,
+                success: true,
+                user: {
+                    ...data,
+                    userType,
+                },
             });
         } catch (error) {
             console.error('Signup error:', error);
-            res.status(500).json({ error: 'Registration failed' });
+            res.status(500).json({ success: false, error: 'Registration failed' });
         }
     });
 

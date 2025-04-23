@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { FaUser, FaLock, FaEye, FaEyeSlash } from 'react-icons/fa';
 import './Login.css';
 
 const API_URL = 'http://ec2-52-66-255-90.ap-south-1.compute.amazonaws.com:3000';
@@ -11,6 +12,7 @@ function TeacherLogin() {
     const [isLoading, setIsLoading] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     useEffect(() => {
         if (showPopup) {
@@ -25,6 +27,10 @@ function TeacherLogin() {
     const handleInputChange = (e) => {
         const { id, value } = e.target;
         setFormData((prev) => ({ ...prev, [id]: value }));
+    };
+
+    const togglePasswordVisibility = () => {
+        setShowPassword((prev) => !prev);
     };
 
     const handleSubmit = async (e) => {
@@ -56,45 +62,88 @@ function TeacherLogin() {
     return (
         <div className="login">
             <div className="login-content">
+                {/* Optional logo */}
+                {/* <div className="logo">
+                    <img src="/logo.png" alt="App Logo" />
+                </div> */}
                 <h2>Teacher Login</h2>
                 <form className="login-form" onSubmit={handleSubmit}>
                     <div className="form-group">
-                        <input
-                            type="text"
-                            id="username"
-                            value={formData.username}
-                            onChange={handleInputChange}
-                            required
-                            placeholder="Username"
-                            autoComplete="username"
-                            disabled={isLoading}
-                        />
+                        <div className="input-wrapper">
+                            <span className="icon">
+                                <FaUser />
+                            </span>
+                            <input
+                                type="text"
+                                id="username"
+                                value={formData.username}
+                                onChange={handleInputChange}
+                                required
+                                placeholder="Enter username"
+                                autoComplete="username"
+                                disabled={isLoading}
+                                aria-label="Username"
+                            />
+                        </div>
                     </div>
                     <div className="form-group">
-                        <input
-                            type="password"
-                            id="password"
-                            value={formData.password}
-                            onChange={handleInputChange}
-                            required
-                            placeholder="Password"
-                            autoComplete="current-password"
-                            disabled={isLoading}
-                        />
+                        <div className="input-wrapper password-wrapper">
+                            <span className="icon">
+                                <FaLock />
+                            </span>
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                id="password"
+                                value={formData.password}
+                                onChange={handleInputChange}
+                                required
+                                placeholder="Enter password"
+                                autoComplete="current-password"
+                                disabled={isLoading}
+                                aria-label="Password"
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle"
+                                onClick={togglePasswordVisibility}
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                tabIndex={-1}
+                            >
+                                {showPassword ? <FaEyeSlash /> : <FaEye />}
+                            </button>
+                        </div>
                     </div>
-                    {errorMessage && <div className="error-message">{errorMessage}</div>}
+                    {errorMessage && (
+                        <div className="error-message">
+                            <FaUser className="icon" />
+                            {errorMessage}
+                        </div>
+                    )}
                     <button
                         type="submit"
                         className="login-button"
                         disabled={isLoading}
+                        aria-label="Login"
                     >
-                        {isLoading ? 'Logging In...' : 'Login'}
+                        {isLoading ? 'Logging in...' : 'Login'}
                     </button>
+                    <div className="signup-link">
+                        Don't have an account?{' '}
+                        <button
+                            type="button"
+                            className="link-button"
+                            onClick={() => navigate('/teacher-signup')}
+                            aria-label="Navigate to signup"
+                        >
+                            Sign up here
+                        </button>
+                    </div>
                 </form>
             </div>
             {showPopup && (
                 <div className="popup success">
-                    ✔️ Login successful! Redirecting to dashboard...
+                    <FaUser className="icon" />
+                    Login successful! Redirecting to dashboard...
                 </div>
             )}
         </div>
