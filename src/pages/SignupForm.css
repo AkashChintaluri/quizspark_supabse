@@ -133,6 +133,23 @@
     z-index: 1000;
 }
 
+.popup.error {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #e53e3e;
+    color: white;
+    padding: 0.8rem 1.5rem;
+    border-radius: 7px;
+    font-size: 0.98rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.09);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    animation: fadeIn 0.3s;
+    z-index: 1000;
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

@@ -17,6 +17,7 @@ function SignupForm() {
     const [isLoading, setIsLoading] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [showBlockedPopup, setShowBlockedPopup] = useState(false);
 
     useEffect(() => {
         if (showPopup) {
@@ -28,6 +29,15 @@ function SignupForm() {
         }
     }, [showPopup, navigate, formData.userType]);
 
+    useEffect(() => {
+        if (showBlockedPopup) {
+            const timer = setTimeout(() => {
+                setShowBlockedPopup(false);
+            }, 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [showBlockedPopup]);
+
     const handleInputChange = (e) => {
         const { id, value } = e.target;
         setFormData((prev) => ({ ...prev, [id]: value }));
@@ -37,6 +47,13 @@ function SignupForm() {
         e.preventDefault();
         setIsLoading(true);
         setErrorMessage('');
+
+        // Check if email contains 'teach' for teacher signup
+        if (formData.userType === 'teacher' && !formData.email.toLowerCase().includes('teach')) {
+            setShowBlockedPopup(true);
+            setIsLoading(false);
+            return;
+        }
 
         try {
             const response = await axios.post(`${API_URL}/signup`, {
@@ -140,7 +157,14 @@ function SignupForm() {
             </div>
             {showPopup && (
                 <div className="popup success">
-                    ✔️ Account created successfully! Redirecting to dashboard...
+                    <FaUser className="icon" />
+                    Signup successful! Redirecting to dashboard...
+                </div>
+            )}
+            {showBlockedPopup && (
+                <div className="popup error">
+                    <FaUser className="icon" />
+                    Teacher signup is blocked. Email must contain "teach"
                 </div>
             )}
         </div>
