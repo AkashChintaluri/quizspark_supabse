@@ -171,13 +171,16 @@ function startServer() {
         const { quiz_name, quiz_code, created_by, questions, due_date } = req.body;
 
         try {
+            // Ensure questions is wrapped in a single container
+            const questionsData = { questions: Array.isArray(questions) ? questions : questions.questions };
+
             const { data, error } = await supabase
                 .from('quizzes')
                 .insert({
                     quiz_name,
                     quiz_code,
                     created_by,
-                    questions: questions,
+                    questions: questionsData,
                     due_date,
                 })
                 .select('quiz_id')
