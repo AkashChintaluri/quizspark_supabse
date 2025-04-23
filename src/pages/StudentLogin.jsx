@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Login.css';
 
-const API_URL = 'http://ec2-52-66-248-47.ap-south-1.compute.amazonaws.com:3000';
+const API_URL = 'http://ec2-15-207-114-232.ap-south-1.compute.amazonaws.com:3000';
 
 function StudentLogin() {
     const navigate = useNavigate();
