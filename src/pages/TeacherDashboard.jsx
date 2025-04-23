@@ -564,7 +564,7 @@ function MakeQuizzesContent({ currentUser }) {
             quiz_name: quizName,
             quiz_code: generatedCode,
             created_by: currentUser.id,
-            questions: { questions },
+            questions: questions,
             due_date: dueDate,
         };
 
