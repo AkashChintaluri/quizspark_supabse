@@ -132,7 +132,7 @@ function TeacherLogin() {
                         <button
                             type="button"
                             className="link-button"
-                            onClick={() => navigate('/teacher-signup')}
+                            onClick={() => navigate('/signup')}
                             aria-label="Navigate to signup"
                         >
                             Sign up here
