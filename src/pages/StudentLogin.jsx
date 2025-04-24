@@ -4,7 +4,7 @@ import axios from 'axios';
 import { FaUser, FaLock, FaEye, FaEyeSlash } from 'react-icons/fa';
 import './Login.css';
 
-const API_URL = 'http://ec2-52-66-255-90.ap-south-1.compute.amazonaws.com:3000';
+const API_URL = 'http://ec2-3-110-207-68.ap-south-1.compute.amazonaws.com:3000';
 
 function StudentLogin() {
     const navigate = useNavigate();
