@@ -4,7 +4,7 @@ import axios from 'axios';
 import { FaUser, FaEnvelope, FaLock, FaUserGraduate, FaChalkboardTeacher } from 'react-icons/fa';
 import './SignupForm.css';
 
-const API_URL = 'http://ec2-3-110-207-68.ap-south-1.compute.amazonaws.com:3000';
+const API_URL = 'http://ec2-13-234-29-164.ap-south-1.compute.amazonaws.com:3000';
 
 function SignupForm() {
     const navigate = useNavigate();
