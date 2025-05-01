@@ -8,7 +8,7 @@ import { Bar } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const API_URL = 'http://ec2-13-234-29-164.ap-south-1.compute.amazonaws.com:3000';
+const API_URL = 'http://ec2-3-110-27-110.ap-south-1.compute.amazonaws.com:3000';
 
 function TeacherDashboard() {
     const [activeTab, setActiveTab] = useState('home');
