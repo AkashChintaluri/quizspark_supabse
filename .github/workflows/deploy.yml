@@ -247,7 +247,7 @@ jobs:
           # Create monitoring directory
           mkdir -p monitoring
 
-          # Create Prometheus config
+          # Create Prometheus config for cAdvisor
           cat > monitoring/prometheus.yml << EOF
           global:
             scrape_interval: 15s
@@ -255,28 +255,12 @@ jobs:
             retention: 30d
             scrape_timeout: 10s
 
-          rule_files:
-            - 'alert.rules'
-            - 'recording.rules'
-
           scrape_configs:
-            - job_name: 'quizspark-backend'
+            - job_name: 'cadvisor'
               static_configs:
-                - targets: ['${{ env.EC2_IP_NUMERIC }}:3000']
+                - targets: ['${{ env.EC2_IP_NUMERIC }}:8080']
               metrics_path: '/metrics'
               scrape_interval: 10s
-              scheme: https
-              tls_config:
-                cert_file: /etc/prometheus/certs/cert.pem
-                key_file: /etc/prometheus/certs/key.pem
-              basic_auth:
-                username: prometheus
-                password: ${PROMETHEUS_PASSWORD}
-
-            - job_name: 'node-exporter'
-              static_configs:
-                - targets: ['${{ env.EC2_IP_NUMERIC }}:9100']
-              scrape_interval: 15s
               scheme: https
               tls_config:
                 cert_file: /etc/prometheus/certs/cert.pem
@@ -308,57 +292,10 @@ jobs:
                   replacement: ${{ env.EC2_IP_NUMERIC }}:9115
           EOF
 
-          # Create recording rules
-          cat > monitoring/recording.rules << EOF
-          groups:
-            - name: recording_rules
-              rules:
-                # System Metrics
-                - record: instance:node_cpu_utilization:rate5m
-                  expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
-
-                - record: instance:node_memory_utilization:ratio
-                  expr: (1 - ((node_memory_MemAvailable_bytes or node_memory_Buffers_bytes + node_memory_Cached_bytes + node_memory_MemFree_bytes) / node_memory_MemTotal_bytes)) * 100
-
-                - record: instance:node_disk_utilization:ratio
-                  expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100
-
-                # Application Metrics
-                - record: http_request_duration_seconds:rate5m
-                  expr: rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])
-
-                - record: http_requests_total:rate5m
-                  expr: rate(http_requests_total[5m])
-
-                - record: http_errors_total:rate5m
-                  expr: rate(http_requests_total{status=~"5.."}[5m])
-
-                # Security Metrics
-                - record: auth_failed_attempts:rate5m
-                  expr: rate(auth_failed_attempts_total[5m])
-
-                - record: auth_unauthorized_requests:rate5m
-                  expr: rate(auth_unauthorized_requests_total[5m])
-
-                # Database Metrics
-                - record: db_query_duration_seconds:rate5m
-                  expr: rate(db_query_duration_seconds_sum[5m]) / rate(db_query_duration_seconds_count[5m])
-
-                - record: db_queries_total:rate5m
-                  expr: rate(db_queries_total[5m])
-
-                # Performance Metrics
-                - record: application_latency_seconds:quantile95
-                  expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
-
-                - record: database_latency_seconds:quantile95
-                  expr: histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le))
-          EOF
-
       - name: Deploy monitoring stack
         run: |
           # SSH into EC2 and setup monitoring
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << EOF
             # Stop any existing containers
             docker-compose -f ~/monitoring/docker-compose.yml down || true
 
@@ -379,7 +316,6 @@ jobs:
                   - "9090:9090"
                 volumes:
                   - ./prometheus.yml:/etc/prometheus/prometheus.yml
-                  - ./recording.rules:/etc/prometheus/recording.rules
                   - prometheus-data:/prometheus
                 command:
                   - "--config.file=/etc/prometheus/prometheus.yml"
@@ -388,11 +324,20 @@ jobs:
                 restart: always
                 network_mode: "host"
 
-              node-exporter:
-                image: prom/node-exporter:latest
+              cadvisor:
+                image: gcr.io/cadvisor/cadvisor:latest
                 ports:
-                  - "9100:9100"
+                  - "8080:8080"
+                volumes:
+                  - /:/rootfs:ro
+                  - /var/run:/var/run:ro
+                  - /sys:/sys:ro
+                  - /var/lib/docker/:/var/lib/docker:ro
+                  - /dev/disk/:/dev/disk:ro
+                devices:
+                  - /dev/kmsg:/dev/kmsg
                 restart: always
+                privileged: true
                 network_mode: "host"
 
               blackbox-exporter:
@@ -408,7 +353,6 @@ jobs:
 
             # Copy monitoring configs
             scp -i ~/.ssh/id_ed25519 monitoring/prometheus.yml ubuntu@${{ env.EC2_IP }}:~/monitoring/
-            scp -i ~/.ssh/id_ed25519 monitoring/recording.rules ubuntu@${{ env.EC2_IP }}:~/monitoring/
 
             # Start monitoring stack
             cd ~/monitoring
@@ -420,9 +364,9 @@ jobs:
             # Check if services are running
             docker ps
             curl -f https://${{ env.EC2_IP_NUMERIC }}:9090/-/healthy
-            curl -f https://${{ env.EC2_IP_NUMERIC }}:9100/metrics
+            curl -f https://${{ env.EC2_IP_NUMERIC }}:8080/metrics
             curl -f https://${{ env.EC2_IP_NUMERIC }}:9115/metrics
-          '
+          EOF
 
       - name: Verify monitoring setup
         run: |
@@ -439,19 +383,22 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y iproute2
             sudo ss -tulpn | grep 9090
-            sudo ss -tulpn | grep 9100
+            sudo ss -tulpn | grep 8080
             sudo ss -tulpn | grep 9115
             
-            # Check service logs using the first container that matches the pattern
+            # Check service logs
             PROMETHEUS_CONTAINER=$(docker ps -a | grep prometheus | head -n 1 | awk "{print \$1}")
-            NODE_EXPORTER_CONTAINER=$(docker ps -a | grep node-exporter | head -n 1 | awk "{print \$1}")
+            CADVISOR_CONTAINER=$(docker ps -a | grep cadvisor | head -n 1 | awk "{print \$1}")
             BLACKBOX_CONTAINER=$(docker ps -a | grep blackbox-exporter | head -n 1 | awk "{print \$1}")
             
             if [ ! -z "$PROMETHEUS_CONTAINER" ]; then
               echo "Prometheus logs:"
               docker logs $PROMETHEUS_CONTAINER
-            else
-              echo "No Prometheus container found"
+            fi
+            
+            if [ ! -z "$CADVISOR_CONTAINER" ]; then
+              echo "cAdvisor logs:"
+              docker logs $CADVISOR_CONTAINER
             fi
           '
 
