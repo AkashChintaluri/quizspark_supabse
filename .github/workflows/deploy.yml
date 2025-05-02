@@ -150,28 +150,43 @@ jobs:
             # Pull the latest image
             docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             
-            # Stop and remove existing container
-            docker stop quizspark-backend || true
-            docker rm quizspark-backend || true
-            
-            # Check if port 3000 is in use and kill the process if needed
-            if lsof -i :3000; then
-              echo "Port 3000 is in use, killing the process..."
-              sudo kill -9 $(sudo lsof -t -i:3000) || true
-              sleep 5
+            # Stop the existing container if it exists
+            if docker ps -a | grep -q quizspark-backend; then
+              echo "Stopping existing container..."
+              docker stop quizspark-backend
+              
+              # Update the container with new image
+              echo "Updating container with new image..."
+              docker commit quizspark-backend quizspark-backend:old || true
+              docker rm quizspark-backend
+              
+              # Start the container with the new image
+              echo "Starting container with new image..."
+              docker run -d \
+                --name quizspark-backend \
+                -p 3000:3000 \
+                -e NODE_ENV=production \
+                --restart unless-stopped \
+                ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            else
+              # If container doesn't exist, create it
+              echo "Creating new container..."
+              docker run -d \
+                --name quizspark-backend \
+                -p 3000:3000 \
+                -e NODE_ENV=production \
+                --restart unless-stopped \
+                ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             fi
             
-            # Run the new container
-            docker run -d \
-              --name quizspark-backend \
-              -p 3000:3000 \
-              -e NODE_ENV=production \
-              --restart unless-stopped \
-              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            
             # Verify container is running
+            echo "Verifying container status..."
             sleep 5
-            docker ps | grep quizspark-backend
+            docker ps | grep quizspark-backend || {
+              echo "Container failed to start"
+              docker logs quizspark-backend || true
+              exit 1
+            }
           '
 
   deploy-frontend:
