@@ -150,6 +150,15 @@ jobs:
             export ECR_REPOSITORY=${{ env.ECR_REPOSITORY }}
             export GITHUB_SHA=${{ github.sha }}
             
+            # Check disk space
+            echo "Checking disk space..."
+            df -h
+            du -sh /var/lib/docker/*
+            
+            # Clean up Docker resources
+            echo "Cleaning up Docker resources..."
+            docker system prune -a -f --volumes
+            
             # Login to ECR
             aws ecr get-login-password --region \${AWS_REGION} | docker login --username AWS --password-stdin \${ECR_REGISTRY}
             
