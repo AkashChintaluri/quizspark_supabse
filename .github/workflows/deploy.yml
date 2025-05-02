@@ -100,7 +100,7 @@ jobs:
         
         echo "Security checks completed"
 
-  setup-monitoring:
+  deploy-backend:
     needs: codeql-analysis
     runs-on: ubuntu-latest
     steps:
@@ -120,6 +120,95 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
+          ls -la ~/.ssh/
+          cat ~/.ssh/id_ed25519
+
+      - name: Create ECR repository
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
+          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Deploy to EC2
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
+            # Login to ECR
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            
+            # Pull the latest image
+            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            
+            # Stop and remove existing container
+            docker stop quizspark-backend || true
+            docker rm quizspark-backend || true
+            
+            # Run the new container
+            docker run -d \
+              --name quizspark-backend \
+              -p 3000:3000 \
+              -e NODE_ENV=production \
+              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          '
+
+  deploy-frontend:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to S3
+        run: |
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }}/
+          aws s3 website s3://${{ env.S3_BUCKET }} --index-document index.html --error-document index.html
+
+  setup-monitoring:
+    needs: [deploy-backend, deploy-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
+          ls -la ~/.ssh/
+          cat ~/.ssh/id_ed25519
 
       - name: Create monitoring configs
         run: |
@@ -184,7 +273,7 @@ jobs:
                 - source_labels: [__param_target]
                   target_label: instance
                 - target_label: __address__
-                  replacement: localhost:9115
+                  replacement: ${{ env.EC2_IP_NUMERIC }}:9115
           EOF
 
           # Create recording rules
@@ -298,9 +387,9 @@ jobs:
 
             # Check if services are running
             docker ps
-            curl -f http://localhost:9090/-/healthy
-            curl -f http://localhost:9100/metrics
-            curl -f http://localhost:9115/metrics
+            curl -f https://${{ env.EC2_IP_NUMERIC }}:9090/-/healthy
+            curl -f https://${{ env.EC2_IP_NUMERIC }}:9100/metrics
+            curl -f https://${{ env.EC2_IP_NUMERIC }}:9115/metrics
           '
 
       - name: Verify monitoring setup
@@ -333,84 +422,6 @@ jobs:
               echo "No Prometheus container found"
             fi
           '
-
-  deploy-backend:
-    needs: setup-monitoring
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Create ECR repository
-        run: |
-          aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
-          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build, tag, and push image to Amazon ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-      - name: Deploy to EC2
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
-            # Login to ECR
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
-            
-            # Pull the latest image
-            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            
-            # Stop and remove existing container
-            docker stop quizspark-backend || true
-            docker rm quizspark-backend || true
-            
-            # Run the new container
-            docker run -d \
-              --name quizspark-backend \
-              -p 3000:3000 \
-              -e NODE_ENV=production \
-              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-          '
-
-  deploy-frontend:
-    needs: deploy-backend
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
-
-      - name: Deploy to S3
-        run: |
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }}/
-          aws s3 website s3://${{ env.S3_BUCKET }} --index-document index.html --error-document index.html
 
         
 
