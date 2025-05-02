@@ -156,17 +156,16 @@ jobs:
             # Pull the latest image
             docker pull \${ECR_REGISTRY}/\${ECR_REPOSITORY}:\${GITHUB_SHA}
             
-            # Check if container exists
-            if docker ps -a | grep -q quizspark-backend; then
-              echo "Container exists, updating..."
-              # Stop and remove existing container
-              docker stop quizspark-backend || true
-              docker rm quizspark-backend || true
-            else
-              echo "Container does not exist, creating new one..."
-            fi
+            # Stop all running containers
+            echo "Stopping all containers..."
+            docker stop \$(docker ps -q) || true
             
-            # Start container with new image
+            # Remove all containers
+            echo "Removing all containers..."
+            docker rm \$(docker ps -a -q) || true
+            
+            # Start new container
+            echo "Starting new container..."
             docker run -d \
               --name quizspark-backend \
               -p 3000:3000 \
