@@ -81,8 +81,6 @@ jobs:
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
-        upload: true
-        output: ${{ github.workspace }}/codeql-results
 
     - name: Security Checks
       run: |
@@ -101,11 +99,6 @@ jobs:
         npm outdated || true
         
         echo "Security checks completed"
-
-    - name: Upload SARIF
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: ${{ github.workspace }}/codeql-results/results.sarif
 
   setup-monitoring:
     needs: codeql-analysis
