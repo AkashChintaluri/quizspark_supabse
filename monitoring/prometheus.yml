@@ -1,7 +1,12 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-  retention: 15d
+  retention: 30d
+  scrape_timeout: 10s
+
+rule_files:
+  - 'alert.rules'
+  - 'recording.rules'
 
 scrape_configs:
   - job_name: 'quizspark-backend'
@@ -9,21 +14,44 @@ scrape_configs:
       - targets: ['localhost:3000']
     metrics_path: '/metrics'
     scrape_interval: 10s
+    scheme: https
+    tls_config:
+      cert_file: /etc/prometheus/certs/cert.pem
+      key_file: /etc/prometheus/certs/key.pem
+    basic_auth:
+      username: prometheus
+      password: ${PROMETHEUS_PASSWORD}
 
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['localhost:9100']
     scrape_interval: 15s
+    scheme: https
+    tls_config:
+      cert_file: /etc/prometheus/certs/cert.pem
+      key_file: /etc/prometheus/certs/key.pem
 
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
     scrape_interval: 15s
+    scheme: https
+    tls_config:
+      cert_file: /etc/prometheus/certs/cert.pem
+      key_file: /etc/prometheus/certs/key.pem
 
-rule_files:
-  - 'alert.rules'
-
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: ['localhost:9093'] 
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - https://quizspark.s3-website.ap-south-1.amazonaws.com
+        - https://3.110.27.110:3000
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: localhost:9115 

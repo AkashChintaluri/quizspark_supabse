@@ -1,0 +1,44 @@
+name: "Enhanced Security Configuration"
+
+disable-default-queries: false
+
+queries:
+  - uses: security-and-quality
+  - name: custom-queries
+    uses: ./.github/codeql/custom-queries
+
+paths:
+  - src/
+  - server/
+  - public/
+
+paths-ignore:
+  - node_modules/
+  - dist/
+  - .git/
+  - .github/
+
+query-filters:
+  - exclude:
+      problem.severity: warning
+  - include:
+      problem.severity: error
+  - include:
+      problem.severity: critical
+
+security-severity:
+  - critical
+  - high
+  - medium
+
+security-categories:
+  - injection
+  - authentication
+  - authorization
+  - cryptography
+  - data-exposure
+  - deserialization
+  - xss
+  - csrf
+  - sql-injection
+  - command-injection 

@@ -22,5 +22,16 @@ services:
     restart: always
     network_mode: "host"
 
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    restart: always
+    network_mode: "host"
+
 volumes:
   prometheus-data: 

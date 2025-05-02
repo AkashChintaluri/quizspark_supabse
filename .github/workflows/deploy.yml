@@ -35,12 +35,30 @@ jobs:
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
+        config-file: ./.github/codeql/codeql-config.yml
+        queries: +security-and-quality
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@v3
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+        upload: true
+
+    - name: Run Security Checks
+      run: |
+        # Additional security checks
+        npm audit
+        npm audit fix
+        snyk test
+        snyk monitor
+
+    - name: Upload SARIF
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: results.sarif
 
   setup-monitoring:
     needs: codeql-analysis
@@ -73,7 +91,12 @@ jobs:
           global:
             scrape_interval: 15s
             evaluation_interval: 15s
-            retention: 15d
+            retention: 30d
+            scrape_timeout: 10s
+
+          rule_files:
+            - 'alert.rules'
+            - 'recording.rules'
 
           scrape_configs:
             - job_name: 'quizspark-backend'
@@ -81,57 +104,94 @@ jobs:
                 - targets: ['${{ env.EC2_IP_NUMERIC }}:3000']
               metrics_path: '/metrics'
               scrape_interval: 10s
+              scheme: https
+              tls_config:
+                cert_file: /etc/prometheus/certs/cert.pem
+                key_file: /etc/prometheus/certs/key.pem
+              basic_auth:
+                username: prometheus
+                password: ${PROMETHEUS_PASSWORD}
 
             - job_name: 'node-exporter'
               static_configs:
                 - targets: ['${{ env.EC2_IP_NUMERIC }}:9100']
               scrape_interval: 15s
+              scheme: https
+              tls_config:
+                cert_file: /etc/prometheus/certs/cert.pem
+                key_file: /etc/prometheus/certs/key.pem
 
             - job_name: 'prometheus'
               static_configs:
                 - targets: ['${{ env.EC2_IP_NUMERIC }}:9090']
               scrape_interval: 15s
+              scheme: https
+              tls_config:
+                cert_file: /etc/prometheus/certs/cert.pem
+                key_file: /etc/prometheus/certs/key.pem
 
-          rule_files:
-            - 'alert.rules'
-
-          alerting:
-            alertmanagers:
-              - static_configs:
-                  - targets: ['${{ env.EC2_IP_NUMERIC }}:9093']
+            - job_name: 'blackbox'
+              metrics_path: /probe
+              params:
+                module: [http_2xx]
+              static_configs:
+                - targets:
+                  - https://quizspark.s3-website.ap-south-1.amazonaws.com
+                  - https://${{ env.EC2_IP_NUMERIC }}:3000
+              relabel_configs:
+                - source_labels: [__address__]
+                  target_label: __param_target
+                - source_labels: [__param_target]
+                  target_label: instance
+                - target_label: __address__
+                  replacement: localhost:9115
           EOF
 
-          # Create alert rules
-          cat > monitoring/alert.rules << EOF
+          # Create recording rules
+          cat > monitoring/recording.rules << EOF
           groups:
-            - name: quizspark
+            - name: recording_rules
               rules:
-                - alert: HighCPUUsage
-                  expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode='idle'}[5m])) * 100) > 80
-                  for: 5m
-                  labels:
-                    severity: warning
-                  annotations:
-                    summary: High CPU usage detected
-                    description: CPU usage is above 80% for 5 minutes
+                # System Metrics
+                - record: instance:node_cpu_utilization:rate5m
+                  expr: 100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
 
-                - alert: HighMemoryUsage
-                  expr: 100 * (1 - ((node_memory_MemAvailable_bytes or node_memory_Buffers_bytes + node_memory_Cached_bytes + node_memory_MemFree_bytes) / node_memory_MemTotal_bytes)) > 85
-                  for: 5m
-                  labels:
-                    severity: warning
-                  annotations:
-                    summary: High memory usage detected
-                    description: Memory usage is above 85% for 5 minutes
+                - record: instance:node_memory_utilization:ratio
+                  expr: (1 - ((node_memory_MemAvailable_bytes or node_memory_Buffers_bytes + node_memory_Cached_bytes + node_memory_MemFree_bytes) / node_memory_MemTotal_bytes)) * 100
 
-                - alert: HighErrorRate
-                  expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
-                  for: 5m
-                  labels:
-                    severity: critical
-                  annotations:
-                    summary: High error rate detected
-                    description: Error rate is above 5% for 5 minutes
+                - record: instance:node_disk_utilization:ratio
+                  expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) * 100
+
+                # Application Metrics
+                - record: http_request_duration_seconds:rate5m
+                  expr: rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])
+
+                - record: http_requests_total:rate5m
+                  expr: rate(http_requests_total[5m])
+
+                - record: http_errors_total:rate5m
+                  expr: rate(http_requests_total{status=~"5.."}[5m])
+
+                # Security Metrics
+                - record: auth_failed_attempts:rate5m
+                  expr: rate(auth_failed_attempts_total[5m])
+
+                - record: auth_unauthorized_requests:rate5m
+                  expr: rate(auth_unauthorized_requests_total[5m])
+
+                # Database Metrics
+                - record: db_query_duration_seconds:rate5m
+                  expr: rate(db_query_duration_seconds_sum[5m]) / rate(db_query_duration_seconds_count[5m])
+
+                - record: db_queries_total:rate5m
+                  expr: rate(db_queries_total[5m])
+
+                # Performance Metrics
+                - record: application_latency_seconds:quantile95
+                  expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+
+                - record: database_latency_seconds:quantile95
+                  expr: histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le))
           EOF
 
       - name: Deploy monitoring stack
@@ -158,12 +218,12 @@ jobs:
                   - "9090:9090"
                 volumes:
                   - ./prometheus.yml:/etc/prometheus/prometheus.yml
-                  - ./alert.rules:/etc/prometheus/alert.rules
+                  - ./recording.rules:/etc/prometheus/recording.rules
                   - prometheus-data:/prometheus
                 command:
                   - "--config.file=/etc/prometheus/prometheus.yml"
                   - "--storage.tsdb.path=/prometheus"
-                  - "--storage.tsdb.retention.time=15d"
+                  - "--storage.tsdb.retention.time=30d"
                 restart: always
                 network_mode: "host"
 
@@ -174,13 +234,20 @@ jobs:
                 restart: always
                 network_mode: "host"
 
+              blackbox-exporter:
+                image: prom/blackbox-exporter:latest
+                ports:
+                  - "9115:9115"
+                restart: always
+                network_mode: "host"
+
             volumes:
               prometheus-data:
             EOL
 
             # Copy monitoring configs
             scp -i ~/.ssh/id_ed25519 monitoring/prometheus.yml ubuntu@${{ env.EC2_IP }}:~/monitoring/
-            scp -i ~/.ssh/id_ed25519 monitoring/alert.rules ubuntu@${{ env.EC2_IP }}:~/monitoring/
+            scp -i ~/.ssh/id_ed25519 monitoring/recording.rules ubuntu@${{ env.EC2_IP }}:~/monitoring/
 
             # Start monitoring stack
             cd ~/monitoring
@@ -193,6 +260,7 @@ jobs:
             docker ps
             curl -f http://localhost:9090/-/healthy
             curl -f http://localhost:9100/metrics
+            curl -f http://localhost:9115/metrics
           '
 
       - name: Verify monitoring setup
@@ -211,23 +279,18 @@ jobs:
             sudo apt-get install -y iproute2
             sudo ss -tulpn | grep 9090
             sudo ss -tulpn | grep 9100
+            sudo ss -tulpn | grep 9115
             
             # Check service logs using the first container that matches the pattern
             PROMETHEUS_CONTAINER=$(docker ps -a | grep prometheus | head -n 1 | awk "{print \$1}")
             NODE_EXPORTER_CONTAINER=$(docker ps -a | grep node-exporter | head -n 1 | awk "{print \$1}")
+            BLACKBOX_CONTAINER=$(docker ps -a | grep blackbox-exporter | head -n 1 | awk "{print \$1}")
             
             if [ ! -z "$PROMETHEUS_CONTAINER" ]; then
               echo "Prometheus logs:"
               docker logs $PROMETHEUS_CONTAINER
             else
               echo "No Prometheus container found"
-            fi
-            
-            if [ ! -z "$NODE_EXPORTER_CONTAINER" ]; then
-              echo "Node Exporter logs:"
-              docker logs $NODE_EXPORTER_CONTAINER
-            else
-              echo "No Node Exporter container found"
             fi
           '
 
@@ -248,15 +311,13 @@ jobs:
       - name: Create ECR repository
         run: |
           aws ecr describe-repositories --repository-names ${{ env.ECR_REPOSITORY }} || \
-          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }} \
-            --image-scanning-configuration scanOnPush=true \
-            --image-tag-mutability MUTABLE
+          aws ecr create-repository --repository-name ${{ env.ECR_REPOSITORY }}
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push Docker image
+      - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
@@ -265,27 +326,26 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ env.EC2_IP }} >> ~/.ssh/known_hosts
-
       - name: Deploy to EC2
         run: |
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} '
+            # Login to ECR
             aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            
+            # Pull the latest image
             docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
-            docker stop $(docker ps -q) || true
-            docker rm $(docker ps -a -q) || true
-            docker run -d -p 3000:3000 ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            
+            # Stop and remove existing container
+            docker stop quizspark-backend || true
+            docker rm quizspark-backend || true
+            
+            # Run the new container
+            docker run -d \
+              --name quizspark-backend \
+              -p 3000:3000 \
+              -e NODE_ENV=production \
+              ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           '
-
-      - name: Verify backend deployment
-        run: |
-          sleep 30
-          curl -f http://${{ env.EC2_IP }}:3000/health || exit 1
 
   deploy-frontend:
     needs: deploy-backend
@@ -301,121 +361,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
       - name: Install dependencies
         run: npm install
 
-      - name: Build frontend
+      - name: Build
         run: npm run build
 
-      - name: Configure S3 bucket
+      - name: Deploy to S3
         run: |
-          aws s3api put-bucket-website \
-            --bucket ${{ env.S3_BUCKET }} \
-            --website-configuration '{"IndexDocument": {"Suffix": "index.html"}, "ErrorDocument": {"Key": "index.html"}}'
-
-          aws s3api put-bucket-cors \
-            --bucket ${{ env.S3_BUCKET }} \
-            --cors-configuration '{"CORSRules": [{"AllowedHeaders": ["*"], "AllowedMethods": ["GET", "HEAD"], "AllowedOrigins": ["*"], "ExposeHeaders": []}]}'
-
-      - name: Upload to S3
-        run: |
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "text/html; charset=utf-8" \
-            --cache-control "no-cache" \
-            --exclude "*.js" \
-            --exclude "*.css" \
-            --exclude "*.json" \
-            --exclude "*.svg" \
-            --exclude "*.png" \
-            --exclude "*.jpg" \
-            --exclude "*.jpeg" \
-            --exclude "*.gif" \
-            --exclude "*.ico" \
-            --exclude "*.woff" \
-            --exclude "*.woff2" \
-            --exclude "*.ttf" \
-            --exclude "*.eot"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "application/javascript" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.js"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "text/css" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.css"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "application/json" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.json"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "image/svg+xml" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.svg"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "image/png" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.png"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "image/jpeg" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.jpg" \
-            --include "*.jpeg"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "image/gif" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.gif"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "image/x-icon" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.ico"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "font/woff" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.woff"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "font/woff2" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.woff2"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "font/ttf" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.ttf"
-
-          aws s3 sync dist/ s3://${{ env.S3_BUCKET }} \
-            --content-type "application/vnd.ms-fontobject" \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*" \
-            --include "*.eot"
-
-      - name: Output frontend URL
-        run: echo "Frontend deployed to http://${{ env.DNS }}"
+          aws s3 sync dist/ s3://${{ env.S3_BUCKET }}/
+          aws s3 website s3://${{ env.S3_BUCKET }} --index-document index.html --error-document index.html
 
         
 
