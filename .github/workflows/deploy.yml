@@ -143,50 +143,47 @@ jobs:
 
       - name: Deploy to EC2
         run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << 'EOF'
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@${{ env.EC2_IP }} << EOF
+            # Set environment variables
+            export AWS_REGION=${{ env.AWS_REGION }}
+            export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+            export ECR_REPOSITORY=${{ env.ECR_REPOSITORY }}
+            export GITHUB_SHA=${{ github.sha }}
+            
             # Login to ECR
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
+            aws ecr get-login-password --region \${AWS_REGION} | docker login --username AWS --password-stdin \${ECR_REGISTRY}
             
             # Pull the latest image
-            docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA
+            docker pull \${ECR_REGISTRY}/\${ECR_REPOSITORY}:\${GITHUB_SHA}
             
-            # Stop the existing container if it exists
+            # Check if container exists
             if docker ps -a | grep -q quizspark-backend; then
-              echo "Stopping existing container..."
-              docker stop quizspark-backend
-              
-              # Update the container with new image
-              echo "Updating container with new image..."
-              docker commit quizspark-backend quizspark-backend:old || true
-              docker rm quizspark-backend
-              
-              # Start the container with the new image
-              echo "Starting container with new image..."
-              docker run -d \
-                --name quizspark-backend \
-                -p 3000:3000 \
-                -e NODE_ENV=production \
-                --restart unless-stopped \
-                $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA
+              echo "Container exists, updating..."
+              # Stop and remove existing container
+              docker stop quizspark-backend || true
+              docker rm quizspark-backend || true
             else
-              # If container doesn't exist, create it
-              echo "Creating new container..."
-              docker run -d \
-                --name quizspark-backend \
-                -p 3000:3000 \
-                -e NODE_ENV=production \
-                --restart unless-stopped \
-                $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA
+              echo "Container does not exist, creating new one..."
             fi
+            
+            # Start container with new image
+            docker run -d \
+              --name quizspark-backend \
+              -p 3000:3000 \
+              -e NODE_ENV=production \
+              --restart unless-stopped \
+              \${ECR_REGISTRY}/\${ECR_REPOSITORY}:\${GITHUB_SHA}
             
             # Verify container is running
             echo "Verifying container status..."
             sleep 5
-            docker ps | grep quizspark-backend || {
+            if docker ps | grep -q quizspark-backend; then
+              echo "Container started successfully"
+            else
               echo "Container failed to start"
               docker logs quizspark-backend || true
               exit 1
-            }
+            fi
           EOF
 
   deploy-frontend:
