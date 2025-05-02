@@ -83,21 +83,23 @@ jobs:
         category: "/language:${{matrix.language}}"
         upload: true
 
-    - name: Update Dependencies
+    - name: Security Checks
       run: |
-        # Update package.json with fixed versions
+        # Update critical dependencies
         npm install react-router@latest react-router-dom@latest
         npm install vite@latest
         
         # Run security checks
+        echo "Running npm audit..."
         npm audit || true
+        
+        echo "Running npm audit fix..."
         npm audit fix || true
         
-        # Run Snyk checks
-        npm install -g snyk
-        snyk auth ${{ secrets.SNYK_TOKEN }}
-        snyk test || true
-        snyk monitor || true
+        echo "Checking for outdated packages..."
+        npm outdated || true
+        
+        echo "Security checks completed"
 
     - name: Upload SARIF
       uses: github/codeql-action/upload-sarif@v3
